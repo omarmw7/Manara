@@ -4,3 +4,4 @@ supabase
 pandas
 groq 
 pypdf
+pymupdf 
