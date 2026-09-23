@@ -30,6 +30,7 @@ groq_client = Groq(api_key=GROQ_API_KEY)
 github_ai_client = OpenAI(
     base_url="https://models.inference.ai.azure.com",
     api_key=GITHUB_TOKEN,
+    timeout=120.0
 )
 
 # --- إعداد الصفحة والواجهة RTL ---
@@ -64,15 +65,16 @@ def generate_quiz_code(subject):
 # ========================================================
 # 👁️ دالة تحويل صفحات الـ PDF لصور مرئية فائقة الجودة
 # ========================================================
-def convert_pdf_to_base64_images(pdf_bytes, max_pages=4):
-    """تحويل صفحات الـ PDF إلى صور واضحة لـ GPT-4o-mini"""
+def convert_pdf_to_base64_images(pdf_bytes, max_pages=3):
+    """تحويل الصفحات لصور خفيفة ومضغوطة تمنع انقطاع الاتصال"""
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     base64_images = []
     
+    # نأخذ أول 3 صفحات وبدقة 90 DPI مضغوطة
     for page_num in range(min(len(doc), max_pages)):
         page = doc[page_num]
-        pix = page.get_pixmap(dpi=150)
-        img_bytes = pix.tobytes("jpeg")
+        pix = page.get_pixmap(dpi=90)  # دقة 90 كافية وواضحة جداً للقراءة وخفيفة في الرفع
+        img_bytes = pix.tobytes("jpeg", jpg_quality=70)  # ضغط جودة 70%
         b64 = base64.b64encode(img_bytes).decode("utf-8")
         base64_images.append(f"data:image/jpeg;base64,{b64}")
         
