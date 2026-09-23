@@ -1,27 +1,26 @@
 import streamlit as st
-from groq import Groq
+from google import genai
+from google.genai import types
 from supabase import create_client, Client
-import fitz  # PyMuPDF: يستخرج العربي السليم بدون قلب للحروف
 import json
 import random
 import string
+import tempfile
+import os
 import pandas as pd
 
 # ========================================================
 # 🔑 إعدادات الربط والمفاتيح
 # ========================================================
-# ضع مفتاح Groq الخاص بك هنا (أو في st.secrets)
-GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", "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")
-
-# إعدادات Supabase
+GEMINI_API_KEY = st.secrets.get("AQ.Ab8RN6L0PsPmQIamfBFU6zip1PNKf6Ac94Aje1A9ISN3uWSW7Q")
 SUPABASE_URL = st.secrets.get("SUPABASE_URL")
 SUPABASE_KEY = st.secrets.get("SUPABASE_KEY")
 
-# تهيئة الاتصالات
+# تهيئة الاتصالات عبر SDK الرسمي الجديد
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-groq_client = Groq(api_key=GROQ_API_KEY)
+ai_client = genai.Client(api_key=GEMINI_API_KEY)
 
-MODEL_NAME = "llama-3.3-70b-versatile"
+MODEL_NAME = "gemini-2.5-flash"
 
 # --- ضبط الصفحة وتنسيق الاتجاه (RTL) ---
 st.set_page_config(
@@ -53,118 +52,106 @@ def generate_quiz_code(subject):
     return f"{prefix}-{code_chars}"
 
 # ========================================================
-# 📄 استخراج النص العربي السليم عبر PyMuPDF
+# 🧠 محرك الذكاء الاصطناعي (Google GenAI New SDK)
 # ========================================================
-def extract_arabic_text_clean(pdf_bytes, max_chars=25000):
-    """قراءة صفحات الـ PDF واستخراج النص العربي باتجاهه الطبيعي الصحيح"""
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    pages_text = []
-    
-    for page_num in range(len(doc)):
-        page = doc[page_num]
-        text = page.get_text("text")
-        if text.strip():
-            pages_text.append(text.strip())
-            
-    full_content = "\n\n".join(pages_text)
-    return full_content[:max_chars]
+def create_smart_quiz_from_pdf(pdf_bytes, subject, title, num_q, diff, allow_tf, make_summary):
+    # 1. حفظ ملف الـ PDF مؤقتاً لرفعه عبر File API الجديدة
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+        tmp.write(pdf_bytes)
+        tmp_path = tmp.name
 
-# ========================================================
-# 🤖 محرك الذكاء الاصطناعي الفائق (Groq 70B)
-# ========================================================
-def create_quiz_with_groq(lesson_text, subject, title, num_q, diff, allow_tf, make_summary):
-    types_desc = "جميع الأسئلة اختيار من متعدد بأربعة خيارات (خيار واحد صحيح و3 مشتتات ذكية تقيس الفهم الحقيقي)."
+    try:
+        uploaded_doc = ai_client.files.upload(file=tmp_path)
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+    types_prompt = "جميع الأسئلة اختيار من متعدد بـ 4 خيارات (إجابة واحدة صحيحة، و3 خيارات مشتتة ذكية تقيس الفهم العميق)."
     if allow_tf:
-        types_desc += " يمكنك تنويع الأسئلة بتضمين أسئلة (صح أو خطأ) بخيارين فقط: 1) صح، 2) خطأ."
+        types_prompt += " يمكنك تنويع الأسئلة بتضمين أسئلة (صح أو خطأ) بخيارين: 1) صح، 2) خطأ."
 
-    system_prompt = (
-        f"أنت موجه تربوي وخبير امتحانات متخصص في مادة {subject}. "
-        "مهمتك تحليل النص التعليمي المرفق واستخراج اختبار احترافي عميق يقيس الفهم والتحليل وليس الحفظ السطحي. "
-        "يجب أن تكون مخرجاتك حصراً كائن JSON صالح."
-    )
+    prompt = f"""
+    أنت موجه تربوي وخبير امتحانات متخصص في مادة ({subject}).
+    مهمتك: قراءة ملف الـ PDF المرفق لدرس: ({title}) بعناية وفهم عميق.
 
-    user_prompt = f"""
-المادة: {subject}
-عنوان الدرس: {title}
-مستوى الصعوبة المطلوب: {diff}
-عدد الأسئلة المطلوب بدقة: {num_q}
-نمط الأسئلة: {types_desc}
+    المعايير التربوية الإلزامية:
+    1. استخرج المعلومات والجداول والمفاهيم بدقة من صلب الملف المرفق.
+    2. صغ أسئلة تقيس (الفهم، الاستيعاب، والتحليل) بمستوى صعوبة: ({diff}) وابتعد عن الأسئلة السطحية.
+    3. عدد الأسئلة المطلوب بدقة: بالضبط {num_q} أسئلة.
+    4. نمط الأسئلة: {types_prompt}.
+    5. إذا كان make_summary = {make_summary}، اكتب ملخصاً في حقل summary يشرح جوهر الدرس في 4 نقاط رئيسية، وإلا اتركه فارغاً.
 
-نص الدرس الدراسي المعتمد:
----
-{lesson_text}
----
-
-المطلوب:
-1. صياغة بالضبط {num_q} أسئلة دقيقة من صلب النص أعلاه.
-2. ابتعد عن الأسئلة المباشرة السطحية؛ اجعل الخيارات المشتتة ذكية ومتقاربة.
-3. إذا كان make_summary = {make_summary}، اكتب ملخصاً في حقل summary يلخص أهم 4 أفكار رئيسية بالدرس، وإلا اتركه فارغاً.
-
-أخرج النتيجة حصراً بالهيكل التالي:
-{{
-  "summary": "نص الملخص هنا إن وجد...",
-  "questions": [
+    أرجع كائن JSON حصرياً وصالحاً 100% بالهيكل التالي:
     {{
-      "id": 1,
-      "question": "نص السؤال الدقيق من واقع محتوى الدرس؟",
-      "options": ["الخيار الأول", "الخيار الثاني", "الخيار الثالث", "الخيار الرابع"],
-      "correct_index": 0,
-      "explanation": "شرح علمي مستند إلى نص الدرس يوضح سبب صحة هذا الخيار واستبعاد الباقي"
+      "summary": "نص الملخص التمهيدي هنا...",
+      "questions": [
+        {{
+          "id": 1,
+          "question": "نص السؤال الدقيق من واقع محتوى الدرس؟",
+          "options": ["الخيار الأول", "الخيار الثاني", "الخيار الثالث", "الخيار الرابع"],
+          "correct_index": 0,
+          "explanation": "شرح علمي مدعم بالنص يوضح سبب صحة هذا الخيار واستبعاد الباقي"
+        }}
+      ]
     }}
-  ]
-}}
-ملاحظة: correct_index هو فهرس الخيار الصحيح (0 للخيار الأول، 1 للثاني، 2 للثالث، 3 للرابع).
-"""
+    ملاحظة: correct_index هو رقم الفهرس للإجابة الصحيحة (0 للخيار الأول، 1 للثاني، 2 للثالث، 3 للرابع).
+    """
 
-    response = groq_client.chat.completions.create(
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ],
+    response = ai_client.models.generate_content(
         model=MODEL_NAME,
-        response_format={"type": "json_object"},
-        temperature=0.25
+        contents=[uploaded_doc, prompt],
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            temperature=0.2
+        )
     )
 
-    return json.loads(response.choices[0].message.content)
+    # تنظيف الملف من السحابة بعد اكتمال المعالجة
+    try:
+        ai_client.files.delete(name=uploaded_doc.name)
+    except Exception:
+        pass
+
+    if not response.text:
+        raise ValueError("وصل رد فارغ من النموذج، يرجى التحقق من محتوى الملف.")
+
+    return json.loads(response.text)
 
 def analyze_class_submissions(subject, submissions_data):
-    """تحليل ذكي لأخطاء الطلاب لمساعدة المعلم في الحصة القادمة"""
+    """تحليل الذكاء الاصطناعي لنقاط ضعف الصف ككل"""
     prompt = f"""
-أنت مستشار تربوي. إليك بيانات أداء الطلاب في اختبارات مادة ({subject}):
-{json.dumps(submissions_data, ensure_ascii=False)}
+    أنت مستشار تربوي. إليك بيانات أداء الطلاب في اختبارات مادة ({subject}):
+    {json.dumps(submissions_data, ensure_ascii=False)}
 
-المطلوب: قدم تقريراً تشخيصياً واضحاً وموجهاً للأستاذ:
-1. ما هي المفاهيم أو الأسئلة التي تكررت فيها أخطاء الطلاب؟
-2. ما هي التوصيات التعليمية لإعادة شرحها وتغطيتها في الحصة القادمة؟
-"""
-    completion = groq_client.chat.completions.create(
-        messages=[{"role": "user", "content": prompt}],
+    المطلوب: قدم تقريراً تشخيصياً واضحاً وموجهاً للأستاذ:
+    1. المفاهيم أو الأسئلة التي تكررت فيها أخطاء الطلاب.
+    2. نصائح وتوصيات تربوية للتركيز عليها وإعادة شرحها في الحصة القادمة.
+    """
+    res = ai_client.models.generate_content(
         model=MODEL_NAME,
-        temperature=0.2
+        contents=prompt
     )
-    return completion.choices[0].message.content
+    return res.text
 
 def ask_ai_tutor(question, student_ans, correct_ans, explanation):
-    """المعلم الذكي لشرح السؤال الخاطئ للطالب"""
+    """المعلم الذكي الخاص بالطالب لشرح السؤال الخاطئ"""
     prompt = f"""
-أنت معلم خصوصي ودود وصبور. الطالب أخطأ في هذا السؤال:
-- السؤال: {question}
-- إجابة الطالب: {student_ans}
-- الإجابة الصحيحة: {correct_ans}
-- التفسير: {explanation}
+    أنت معلم خصوصي ودود ومشجع. الطالب أخطأ في هذا السؤال:
+    - السؤال: {question}
+    - إجابة الطالب: {student_ans}
+    - الإجابة الصحيحة: {correct_ans}
+    - التفسير: {explanation}
 
-اشرح للطالب بأسلوب مبسط جداً وداعم لماذا إجابته كانت غير دقيقة، وكيف يفهم الإجابة الصحيحة بسهولة.
-"""
-    completion = groq_client.chat.completions.create(
-        messages=[{"role": "user", "content": prompt}],
+    اشرح للطالب بأسلوب مبسط جداً وداعم سبب عدم صحة إجابته، وكيف يتذكر القاعدة الصحيحة دائماً.
+    """
+    res = ai_client.models.generate_content(
         model=MODEL_NAME,
-        temperature=0.3
+        contents=prompt
     )
-    return completion.choices[0].message.content
+    return res.text
 
 # =======================================================
-# الواجهة الرئيسية للتطبيق
+# الواجهة الرئيسية
 # =======================================================
 st.title("🎓 نظام منارة الذكي للاختبارات والتقييم")
 role = st.sidebar.radio("اختر البوابة:", ["👨‍🏫 بوابة المعلم", "👨‍🎓 بوابة الطالب"])
@@ -197,13 +184,13 @@ if role == "👨‍🏫 بوابة المعلم":
             st.rerun()
 
         tab1, tab2, tab3 = st.tabs([
-            "✨ إنشاء اختبار ذكي فوري", 
+            "✨ إنشاء اختبار ذكي من الـ PDF", 
             "📚 بنك الاختبارات المتاحة", 
-            "📊 تحليلات وتقارير الأداء"
+            "📊 تحليلات الذكاء الاصطناعي والنتائج"
         ])
 
         with tab1:
-            st.subheader("🤖 توليد اختبار دقيق من ملف PDF في ثوانٍ")
+            st.subheader("🤖 توليد اختبار بقراءة مباشرة للـ PDF (فهم الجداول والمفاهيم)")
             c_title, c_num, c_diff = st.columns([2, 1, 1])
             with c_title:
                 quiz_title = st.text_input("عنوان الدرس / الاختبار:", placeholder="مثال: الخلية والأنسجة الحية")
@@ -229,33 +216,29 @@ if role == "👨‍🏫 بوابة المعلم":
 
             pdf_file = st.file_uploader("ارفع ملف الدرس بصيغة (PDF):", type=["pdf"])
 
-            if pdf_file and quiz_title and st.button("🚀 توليد الاختبار ونشره فوراً", type="primary"):
-                with st.spinner("جاري قراءة النصوص واستخراج الأسئلة الاحترافية عبر LLaMA 3.3 70B..."):
+            if pdf_file and quiz_title and st.button("🚀 توليد الاختبار ونشره", type="primary"):
+                with st.spinner("يقوم الذكاء الاصطناعي الآن بقراءة صفحات الـ PDF بصرياً وهندسة الأسئلة الاحترافية..."):
                     try:
-                        clean_content = extract_arabic_text_clean(pdf_file.getvalue())
-                        if len(clean_content.strip()) < 50:
-                            st.error("تعذر قراءة نص واضح من الـ PDF (تأكد أن الملف يحتوي على نصوص وليس صوراً ممسوحة ضوئياً).")
-                        else:
-                            ai_data = create_quiz_with_groq(
-                                clean_content, subject, quiz_title, num_q, diff, allow_tf, enable_summary
-                            )
-                            quiz_code = generate_quiz_code(subject)
+                        ai_data = create_smart_quiz_from_pdf(
+                            pdf_file.getvalue(), subject, quiz_title, num_q, diff, allow_tf, enable_summary
+                        )
+                        quiz_code = generate_quiz_code(subject)
 
-                            supabase.table("quizzes").insert({
-                                "quiz_code": quiz_code,
-                                "teacher_name": teacher,
-                                "subject": subject,
-                                "lesson_title": quiz_title,
-                                "difficulty": diff,
-                                "timer_minutes": timer_val if enable_timer else None,
-                                "shuffle_enabled": enable_shuffle,
-                                "summary": ai_data.get("summary") if enable_summary else None,
-                                "questions": ai_data.get("questions", [])
-                            }).execute()
+                        supabase.table("quizzes").insert({
+                            "quiz_code": quiz_code,
+                            "teacher_name": teacher,
+                            "subject": subject,
+                            "lesson_title": quiz_title,
+                            "difficulty": diff,
+                            "timer_minutes": timer_val if enable_timer else None,
+                            "shuffle_enabled": enable_shuffle,
+                            "summary": ai_data.get("summary") if enable_summary else None,
+                            "questions": ai_data.get("questions", [])
+                        }).execute()
 
-                            st.success(f"🎉 تم توليد ونشر الاختبار بنجاح في ثوانٍ! كود الاختبار للطلاب هو: **{quiz_code}**")
+                        st.success(f"🎉 تم إنشاء ونشر الاختبار بنجاح! كود الاختبار للطلاب هو: **{quiz_code}**")
                     except Exception as e:
-                        st.error(f"حدث خطأ أثناء التوليد: {e}")
+                        st.error(f"حدث خطأ أثناء المعالجة: {e}")
 
         with tab2:
             st.subheader(f"📚 سجل اختبارات مادة ({subject})")
@@ -296,8 +279,8 @@ if role == "👨‍🏫 بوابة المعلم":
 
                 st.divider()
 
-                if st.button("🤖 طلب تشخيص نقاط ضعف الصف بالذكاء الاصطناعي", type="primary"):
-                    with st.spinner("جاري قراءة وتحليل إجابات الطلاب عبر LLaMA 70B..."):
+                if st.button("🤖 طلب تقرير تشخيص نقاط ضعف الصف بالذكاء الاصطناعي", type="primary"):
+                    with st.spinner("جاري قراءة إجابات الطلاب واستخراج الملاحظات التوجيهية..."):
                         report = analyze_class_submissions(subject, sub_res.data[:30])
                         st.markdown("### 📋 التقرير التشخيصي الذكي للأستاذ:")
                         st.success(report)
