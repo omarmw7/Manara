@@ -1,6 +1,7 @@
 import streamlit as st
 import pypdf
 import json
+import re
 from groq import Groq
 from supabase import create_client, Client
 
@@ -22,7 +23,7 @@ groq_client = Groq(api_key=GROQ_API_KEY)
 # حسابات الأساتذة والمواد
 TEACHERS_DB = {
     "أ. عمر": {"password": "bio123", "subject": "الأحياء"},
-    "أ. سيد": {"password": "math123", "subject": "الرياضيات"},
+    "أ. فتوح": {"password": "math123", "subject": "الرياضيات"},
     "أ. رجب": {"password": "islamic123", "subject": "التربية الإسلامية"}
 }
 
@@ -34,23 +35,39 @@ role = st.sidebar.radio("اختر الدور:", ["👨‍🏫 الأستاذ", "
 if 'logged_teacher' not in st.session_state:
     st.session_state['logged_teacher'] = None
 
-# دالة مساعدة لفك وإصلاح بيانات الأسئلة بجميع أشكالها
+# دالة معالجة واستخراج الـ JSON بأمان كامل
 def parse_questions_data(raw_data):
     if not raw_data:
         return []
+    
+    # إذا كانت البيانات قادمة كـ String
     if isinstance(raw_data, str):
         try:
             parsed = json.loads(raw_data)
             return parse_questions_data(parsed)
         except Exception:
+            # محاولة استخراج صيغة القائمة JSON باستخدام Regular Expression
+            match = re.search(r'\[\s*\{.*\}\s*\]', raw_data, re.DOTALL)
+            if match:
+                try:
+                    return json.loads(match.group(0))
+                except Exception:
+                    pass
             return []
+            
+    # إذا كانت البيانات List
     elif isinstance(raw_data, list):
-        if len(raw_data) > 0 and isinstance(raw_data[0], str):
-            try:
-                return [json.loads(item) if isinstance(item, str) else item for item in raw_data]
-            except Exception:
-                pass
-        return raw_data
+        clean_list = []
+        for item in raw_data:
+            if isinstance(item, str):
+                try:
+                    clean_list.append(json.loads(item))
+                except Exception:
+                    pass
+            elif isinstance(item, dict):
+                clean_list.append(item)
+        return clean_list
+        
     return []
 
 # ---------------------------------------------------------
@@ -108,8 +125,7 @@ if role == "👨‍🏫 الأستاذ":
 أنت معلم متخصص في مادة ({current_subject}). أمامك نص دراسي مصفّى. 
 اصنع منه 7 أسئلة اختيار من متعدد دقيقة تعتمد على النص المرفق.
 
-يجب أن ترجع النتيجة كـ JSON صريح فقط بدون أي مقدمات أو كلام خارجي.
-التنسيق المطلوب تماماً:
+أرجع فقط قائمة JSON حصرية بنفس الشكل التالي تماماً وبدون أي نصوص إضافية:
 [
   {{
     "id": 1,
@@ -125,7 +141,7 @@ if role == "👨‍🏫 الأستاذ":
 
                         response = groq_client.chat.completions.create(
                             messages=[
-                                {"role": "system", "content": "أنت مساعد تعليمي يخرج البيانات بصيغة JSON حصرية."},
+                                {"role": "system", "content": "أنت مساعد تعليمي تخرج النتائج بصيغة JSON فقط."},
                                 {"role": "user", "content": prompt}
                             ],
                             model="qwen/qwen3.8-27b",
@@ -134,157 +150,9 @@ if role == "👨‍🏫 الأستاذ":
                         
                         raw_response = response.choices[0].message.content.strip()
                         
-                        backticks = chr(96) * 3
-                        if backticks in raw_response:
-                            parts = raw_response.split(backticks)
-                            if len(parts) > 1:
-                                raw_response = parts[1]
-                                if raw_response.startswith("json"):
-                                    raw_response = raw_response[4:]
+                        # استخراج الـ JSON
+                        quiz_json = parse_questions_data(raw_response)
                         
-                        quiz_json = json.loads(raw_response.strip())
-                        
-                        # حفظ الاختبار في قاعدة البيانات
-                        supabase.table("quizzes").upsert({
-                            "subject": current_subject,
-                            "questions": quiz_json
-                        }, on_conflict="subject").execute()
-                        
-                        # حفظ في الجلسة للحصول على Preview فوراً
-                        st.session_state[f"preview_{current_subject}"] = quiz_json
-                        st.success(f"تم حفظ ونشر اختبار مادة {current_subject} (7 أسئلة) بنجاح!")
-                        
-                    except Exception as e:
-                        st.error(f"حدث خطأ أثناء معالجة الاختبار: {e}")
-
-            # قراءة وعرض المعاينة (Preview) فوراً للأستاذ
-            quiz_to_preview = st.session_state.get(f"preview_{current_subject}", None)
-            
-            if not quiz_to_preview:
-                try:
-                    res = supabase.table("quizzes").select("questions").eq("subject", current_subject).execute()
-                    if res.data:
-                        quiz_to_preview = parse_questions_data(res.data[0]['questions'])
-                except Exception:
-                    pass
-            
-            if quiz_to_preview:
-                st.write("---")
-                st.subheader(f"📋 معاينة (Preview) اختبار مادة ({current_subject}):")
-                for q in quiz_to_preview:
-                    if isinstance(q, dict):
-                        st.markdown(f"**س{q.get('id', '')}: {q.get('question', '')}**")
-                        for opt in q.get('options', []):
-                            st.write(f"- {opt}")
-                        st.markdown(f"✅ **الإجابة الصحيحة:** ({q.get('correct', '')})")
-                        st.write("---")
-
-        with tab2:
-            st.subheader(f"📊 نتائج إجابات الطلاب لمادة ({current_subject})")
-            try:
-                res_sub = supabase.table("submissions").select("*").eq("subject", current_subject).order("created_at", desc=True).execute()
-                
-                if res_sub.data:
-                    for sub in res_sub.data:
-                        st.write(f"👤 **اسم الطالب:** {sub['student_name']}")
-                        st.write(f"💯 **الدرجة:** {sub['score']} من {sub['total']}")
-                        st.write("**تفاصيل إجابات الطالب:**")
-                        for detail in sub.get('details', []):
-                            st.write(f"- {detail.get('question', '')} | إجابة الطالب: ({detail.get('student_ans', '')}) | الإجابة الصحيحة: ({detail.get('correct_ans', '')})")
-                        st.write("---")
-                else:
-                    st.info(f"لا توجد إجابات مقدمة لمادة {current_subject} حتى الآن.")
-            except Exception:
-                st.info(f"لا توجد إجابات مقدمة لمادة {current_subject} حتى الآن.")
-
-# ---------------------------------------------------------
-# بوابة الطالب
-# ---------------------------------------------------------
-elif role == "👨‍🎓 الطالب":
-    st.header("بوابة الطالب")
-    
-    try:
-        res_quizzes = supabase.table("quizzes").select("subject, questions").execute()
-    except Exception:
-        res_quizzes = None
-        
-    if res_quizzes and res_quizzes.data:
-        available_subjects = [item['subject'] for item in res_quizzes.data]
-        selected_subject = st.selectbox("📚 اختر المادة التي تريد تقديم اختبارها:", available_subjects)
-        
-        student_name = st.text_input("اسم الطالب الكامل:")
-        
-        st.write("---")
-        st.subheader(f"📝 اختبار مادة: {selected_subject}")
-        
-        raw_selected = next(item['questions'] for item in res_quizzes.data if item['subject'] == selected_subject)
-        selected_quiz_data = parse_questions_data(raw_selected)
-        
-        user_answers = {}
-        all_answered = True
-        
-        if selected_quiz_data and len(selected_quiz_data) > 0:
-            for q in selected_quiz_data:
-                if isinstance(q, dict):
-                    q_id = q.get('id', 1)
-                    q_text = q.get('question', '')
-                    q_options = q.get('options', [])
-                    q_correct = q.get('correct', '')
-                    
-                    st.markdown(f"#### س{q_id}: {q_text}")
-                    
-                    chosen = st.radio(
-                        "اختر الإجابة:", 
-                        q_options, 
-                        index=None,
-                        key=f"q_{selected_subject}_{q_id}"
-                    )
-                    
-                    if chosen is None:
-                        all_answered = False
-                        chosen_char = None
-                    else:
-                        chosen_char = chosen.split(")")[0].strip() if ")" in chosen else chosen[0]
-                    
-                    user_answers[q_id] = {
-                        "chosen_char": chosen_char,
-                        "question": q_text,
-                        "correct_char": q_correct
-                    }
-                    st.write("")
-            
-            if st.button("تسليم الحل"):
-                if not student_name:
-                    st.warning("يرجى كتابة اسمك الكامل قبل إرسال الحل.")
-                elif not all_answered:
-                    st.warning("يرجى الإجابة عن جميع الأسئلة قبل تسليم الحل.")
-                else:
-                    score = 0
-                    total = len(selected_quiz_data)
-                    details = []
-                    
-                    for q_id, ans in user_answers.items():
-                        is_correct = (ans['chosen_char'] == ans['correct_char'])
-                        if is_correct:
-                            score += 1
-                        
-                        details.append({
-                            "question": ans['question'],
-                            "student_ans": ans['chosen_char'],
-                            "correct_ans": ans['correct_char']
-                        })
-                    
-                    supabase.table("submissions").insert({
-                        "student_name": student_name,
-                        "subject": selected_subject,
-                        "score": score,
-                        "total": total,
-                        "details": details
-                    }).execute()
-                    
-                    st.balloons()
-                    st.success(f"تم تسليم إجابة اختبار {selected_subject} بنجاح يا {student_name}! درجتك هي: {score} من {total}")
-        else:
-            st.warning("عذراً، لم يتم إنشاء أسئلة جديدة بعد لهذه المادة. يرجى الدخول كمعلم وتوليد اختبار جديد.")
-    else:
-        st.info("لا توجد أي اختبارات متاحة حالياً لأي مادة. يرجى الدخول من حساب الأستاذ وتوليد اختبار أولاً.")
+                        if not quiz_json:
+                            # محاولة تنظيف بسيطة في حال عدم المطابقة
+                            clean_str = raw_response.replace("```json", "").replace("
