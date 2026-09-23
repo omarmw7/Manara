@@ -85,18 +85,28 @@ def convert_pdf_to_base64_images(pdf_bytes, max_pages=3):
 def clean_and_parse_json(text):
     if not text:
         raise ValueError("وصل رد فارغ من الموديل.")
-    clean_text = text.strip()
+    
+    # 1. إزالة أي أفكار أو كلام تمهيدي مثل <think> ... </think>
+    clean_text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+    clean_text = clean_text.strip()
+    
+    # 2. إزالة علامات الماركداون ```json
     clean_text = re.sub(r"^```(?:json)?\s*", "", clean_text, flags=re.IGNORECASE)
     clean_text = re.sub(r"\s*```$", "", clean_text)
     clean_text = clean_text.strip()
+    
+    # 3. استخراج كائن الـ JSON الحقيقي حصراً بين أول { وآخر }
+    match = re.search(r"(\{.*\})", clean_text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(1))
+        except Exception:
+            pass
+            
     try:
         return json.loads(clean_text)
     except Exception:
-        match = re.search(r"(\{.*\})", clean_text, re.DOTALL)
-        if match:
-            return json.loads(match.group(1))
-        raise ValueError(f"تعذر استخراج كائن JSON صالح من الرد: {clean_text[:100]}")
-
+        raise ValueError(f"تعذر استخراج كائن JSON صالح: {clean_text[:120]}")
 # ========================================================
 # 🚀 توليد الاختبار
 # ========================================================
