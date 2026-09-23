@@ -6,17 +6,6 @@ import string
 import pandas as pd
 from supabase import create_client, Client
 
-# ==========================================
-# 🔑 المفاتيح والروابط المباشرة (للتجربة)
-# ==========================================
-SUPABASE_URL = "https://ccchpwhjkzbditeiixra.supabase.co"
-SUPABASE_KEY = "sb_secret_g2t3oBSdjmqe2tX835vTSw_32g3qpon"
-GEMINI_API_KEY = "AQ.Ab8RN6Kp696FTmr7JoZn7lJbw747xx1oLsY1dA_s7VdNm9MSgw"
-
-# --- تهيئة الاتصال بقاعدة البيانات والذكاء الاصطناعي ---
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-genai.configure(api_key=GEMINI_API_KEY)
-
 # --- ضبط الصفحة وتنسيق الاتجاه (RTL) ---
 st.set_page_config(
     page_title="منصة منارة التعليمية",
@@ -32,6 +21,19 @@ st.markdown("""
     div[data-testid="stExpander"] { direction: rtl; text-align: right; }
 </style>
 """, unsafe_allow_html=True)
+
+# --- جلب المفاتيح بأمان من st.secrets ---
+try:
+    SUPABASE_URL = st.secrets["SUPABASE_URL"]
+    SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+    GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+except Exception:
+    st.error("⚠️ يرجى التأكد من إضافة المفاتيح (SUPABASE_URL, SUPABASE_KEY, GEMINI_API_KEY) داخل st.secrets.")
+    st.stop()
+
+# تهيئة الاتصالات
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+genai.configure(api_key=GEMINI_API_KEY)
 
 # بيانات المعلمين
 TEACHERS_DB = {
@@ -82,7 +84,7 @@ def create_quiz_with_gemini(pdf_bytes, subject, title, num_q, diff, allow_tf, ma
         }}
       ]
     }}
-    ملاحظة هامة: correct_index هو فهرس الإجابة الصحيحة ويبدأ دائماً من الرقم 0.
+    ملاحظة: correct_index هو فهرس الإجابة الصحيحة ويبدأ من الرقم 0.
     """
 
     res = model.generate_content([
@@ -98,9 +100,9 @@ def analyze_class_submissions(subject, submissions_data):
     {json.dumps(submissions_data, ensure_ascii=False)}
 
     المطلوب:
-    قدم تقريراً مختصراً وواضحاً للأستاذ يوضح:
-    1. المفاهيم التي وجد معظم الطلاب صعوبة فيها وتكررت أخطاؤهم بها.
-    2. نصائح وتوصيات محددة لإعادة شرحها وتغطيتها في الحصة القادمة.
+    قدم تقريراً تشخيصياً واضحاً وموجهاً للأستاذ:
+    1. المفاهيم أو الأسئلة التي تكررت فيها أخطاء الطلاب.
+    2. نصائح وتوصيات تعليمية للتركيز عليها في الحصة القادمة.
     """
     res = model.generate_content(prompt)
     return res.text
@@ -112,14 +114,14 @@ def ask_ai_tutor(question, student_ans, correct_ans, explanation):
     - السؤال: {question}
     - إجابة الطالب: {student_ans}
     - الإجابة الصحيحة: {correct_ans}
-    - السبب: {explanation}
+    - التفسير: {explanation}
 
-    اشرح للطالب بأسلوب مبسط جداً وداعم لماذا إجابته كانت غير دقيقة، وكيف يفهم الإجابة الصحيحة بسهولة.
+    اشرح للطالب بأسلوب مبسط جداً وداعم لماذا إجابته كانت غير دقيقة، وكيف يستوعب الفكرة الصحيحة بسهولة.
     """
     res = model.generate_content(prompt)
     return res.text
 
-# --- واجهة التطبيق الرئيسية ---
+# --- واجهة التطبيق ---
 st.title("🎓 منصة منارة الذكية للتقييم والتعليم")
 role = st.sidebar.radio("اختر البوابة:", ["👨‍🏫 بوابة المعلم", "👨‍🎓 بوابة الطالب"])
 
@@ -132,10 +134,8 @@ if role == "👨‍🏫 بوابة المعلم":
 
     if not st.session_state['logged_teacher']:
         st.subheader("🔒 تسجيل الدخول لأساتذة المواد")
-        c1, c2 = st.columns(2)
-        with c1:
-            t_user = st.selectbox("اسم المعلم:", list(TEACHERS_DB.keys()))
-        with c2:  t_pwd = st.text_input("كلمة المرور:", type="password")
+        t_user = st.selectbox("اسم المعلم:", list(TEACHERS_DB.keys()))
+        t_pwd = st.text_input("كلمة المرور:", type="password")
 
         if st.button("تسجيل الدخول", type="primary"):
             if t_pwd == TEACHERS_DB[t_user]["password"]:
@@ -159,21 +159,21 @@ if role == "👨‍🏫 بوابة المعلم":
         ])
 
         with tab1:
-            st.subheader("🤖 توليد اختبار ذكي جديد من الـ PDF")
+            st.subheader("🤖 توليد اختبار ذكي جديد من ملف PDF")
             c_title, c_num, c_diff = st.columns([2, 1, 1])
             with c_title:
-                quiz_title = st.text_input("عنوان الدرس / الاختبار:", placeholder="مثال: علم الوراثة والجينات")
+                quiz_title = st.text_input("عنوان الدرس / الاختبار:", placeholder="مثال: قوانين الحركة لنيوتن")
             with c_num:
                 num_q = st.number_input("عدد الأسئلة:", 1, 25, 5)
             with c_diff:
                 diff = st.selectbox("مستوى الصعوبة:", ["سهل", "متوسط", "متقدم"])
 
-            st.markdown("#### ⚙️ خيارات ومزايا الاختبار (اختيارية):")
+            st.markdown("#### ⚙️ خيارات الاختبار (اختيارية):")
             col1, col2, col3, col4 = st.columns(4)
             with col1:
                 enable_shuffle = st.checkbox("🔀 عشوائية الأسئلة والخيارات", value=True, help="ترتيب مختلف لكل طالب لمنع الغش")
             with col2:
-                enable_timer = st.checkbox("⏱️ تحديد وقت زمني", value=False)
+                enable_timer = st.checkbox("⏱️ تفعيل مؤقت زمني", value=False)
             with col3:
                 allow_tf = st.checkbox("⚖️ تضمين صح وخطأ", value=False)
             with col4:
@@ -186,7 +186,7 @@ if role == "👨‍🏫 بوابة المعلم":
             pdf_file = st.file_uploader("ارفع ملف الدرس بصيغة (PDF):", type=["pdf"])
 
             if pdf_file and quiz_title and st.button("🚀 توليد الاختبار ونشره", type="primary"):
-                with st.spinner("يقوم Gemini 1.5 Flash الآن باستيعاب الدرس وهندسة الأسئلة والشروحات..."):
+                with st.spinner("يقوم Gemini 1.5 Flash الآن بقراءة الملف وهندسة الأسئلة والشروحات..."):
                     try:
                         ai_data = create_quiz_with_gemini(
                             pdf_file.getvalue(), subject, quiz_title, num_q, diff, allow_tf, enable_summary
@@ -205,7 +205,7 @@ if role == "👨‍🏫 بوابة المعلم":
                             "questions": ai_data.get("questions", [])
                         }).execute()
 
-                        st.success(f"🎉 تم نشر الاختبار بنجاح! كود الاختبار للطلاب هو: **{quiz_code}**")
+                        st.success(f"🎉 تم نشر الاختبار بنجاح! كود الاختبار للطلاب: **{quiz_code}**")
                     except Exception as e:
                         st.error(f"حدث خطأ أثناء المعالجة: {e}")
 
@@ -227,9 +227,9 @@ if role == "👨‍🏫 بوابة المعلم":
                             for o_idx, opt in enumerate(q['options']):
                                 correct_mark = "✅ " if o_idx == q.get('correct_index') else ""
                                 st.write(f"- {correct_mark}{opt}")
-                            st.caption(f"تفسير الإجابة: {q.get('explanation')}")
+                            st.caption(f"التفسير: {q.get('explanation')}")
 
-                        if st.button("🗑️ حذف هذا الاختبار", key=f"del_btn_{qz['id']}"):
+                        if st.button("🗑️ حذف هذا الاختبار", key=f"del_{qz['id']}"):
                             supabase.table("quizzes").delete().eq("id", qz['id']).execute()
                             st.rerun()
             else:
@@ -249,7 +249,7 @@ if role == "👨‍🏫 بوابة المعلم":
                 st.divider()
 
                 if st.button("🤖 تشخيص نقاط ضعف الطلاب عبر الذكاء الاصطناعي", type="primary"):
-                    with st.spinner("جاري قراءة وتحليل كافة إجابات الطلاب واستخراج نقاط الضعف..."):
+                    with st.spinner("جاري تحليل كافة إجابات الطلاب واستخراج نقاط الضعف..."):
                         report = analyze_class_submissions(subject, sub_res.data[:30])
                         st.markdown("### 📋 التقرير التشخيصي الذكي:")
                         st.success(report)
@@ -262,7 +262,7 @@ if role == "👨‍🏫 بوابة المعلم":
 
                 st.dataframe(export_df, use_container_width=True)
             else:
-                st.info("لا توجد أي تسليمات مسجلة من الطلاب حتى الآن.")
+                st.info("لا توجد أي تسليمات مسجلة حتى الآن.")
 
 # =======================================================
 # 2. بوابة الطالب
@@ -274,7 +274,7 @@ elif role == "👨‍🎓 بوابة الطالب":
     target_quiz = None
 
     if access_type == "🔑 إدخال كود الاختبار (Quiz Code)":
-        entered_code = st.text_input("أدخل كود الاختبار (مثال: BIO-1234):").strip()
+        entered_code = st.text_input("أدخل كود الاختبار (مثال: أحيا-1234):").strip()
         if entered_code:
             res_code = supabase.table("quizzes").select("*").eq("quiz_code", entered_code).execute()
             if res_code.data:
@@ -320,102 +320,3 @@ elif role == "👨‍🎓 بوابة الطالب":
                         "options": opts,
                         "correct_idx": q["correct_index"],
                         "explanation": q.get("explanation", "")
-                    })
-                if target_quiz.get("shuffle_enabled"):
-                    random.shuffle(prepared_qs)
-                st.session_state[session_quiz_key] = prepared_qs
-
-            active_quiz = st.session_state[session_quiz_key]
-            result_state_key = f"result_{target_quiz['id']}_{student_name.strip()}"
-
-            if result_state_key not in st.session_state:
-                user_choices = {}
-                with st.form("exam_form"):
-                    for idx, q in enumerate(active_quiz):
-                        st.markdown(f"**س{idx+1}: {q['question']}**")
-                        opts_text = [o[1] for o in q["options"]]
-                        user_choices[idx] = st.radio(
-                            "اختر الإجابة:",
-                            options=list(range(len(opts_text))),
-                            format_func=lambda x, texts=opts_text: texts[x],
-                            key=f"field_{target_quiz['id']}_{idx}",
-                            index=None
-                        )
-                        st.write("")
-
-                    finish_btn = st.form_submit_button("📩 إنهاء وتسليم الإجابات", type="primary")
-
-                if finish_btn:
-                    if any(c is None for c in user_choices.values()):
-                        st.error("يرجى الإجابة عن جميع الأسئلة قبل تسليم الاختبار.")
-                    else:
-                        score = 0
-                        total = len(active_quiz)
-                        report_details = []
-
-                        for idx, q in enumerate(active_quiz):
-                            selected_pos = user_choices[idx]
-                            orig_idx = q["options"][selected_pos][0]
-                            selected_str = q["options"][selected_pos][1]
-
-                            correct_str = next(opt[1] for opt in q["options"] if opt[0] == q["correct_idx"])
-                            is_correct = (orig_idx == q["correct_idx"])
-                            if is_correct:
-                                score += 1
-
-                            report_details.append({
-                                "question": q["question"],
-                                "chosen": selected_str,
-                                "correct": correct_str,
-                                "is_correct": is_correct,
-                                "explanation": q["explanation"]
-                            })
-
-                        # الحفظ في Supabase
-                        supabase.table("submissions").insert({
-                            "quiz_id": target_quiz["id"],
-                            "subject": target_quiz["subject"],
-                            "student_name": student_name.strip(),
-                            "score": score,
-                            "total": total,
-                            "answers": report_details
-                        }).execute()
-
-                        st.session_state[result_state_key] = {
-                            "score": score,
-                            "total": total,
-                            "details": report_details
-                        }
-                        st.rerun()
-
-            if result_state_key in st.session_state:
-                res_data = st.session_state[result_state_key]
-                st.balloons()
-                st.success(f"أحسنت يا {student_name}! نتيجتك هي: {res_data['score']} من {res_data['total']}")
-
-                st.subheader("🔍 مراجعة الإجابات والتفسيرات:")
-                for idx, item in enumerate(res_data["details"]):
-                    with st.container():
-                        if item["is_correct"]:
-                            st.markdown(f"✅ **س{idx+1}: {item['question']}**")
-                            st.write(f"- إجابتك: {item['chosen']}")
-                        else:
-                            st.markdown(f"❌ **س{idx+1}: {item['question']}**")
-                            st.write(f"- إجابتك: {item['chosen']}")
-                            st.write(f"- الإجابة الصحيحة: {item['correct']}")
-
-                        st.caption(f"💡 السبب: {item['explanation']}")
-
-                        if not item["is_correct"]:
-                            tutor_key = f"tutor_ans_{target_quiz['id']}_{idx}"
-                            if st.button(f"🤖 اطلب من المعلم الذكي شرح هذا السؤال", key=f"tutor_btn_{target_quiz['id']}_{idx}"):
-                                with st.spinner("المعلم الذكي يكتب لك الشرح الآن..."):
-                                    explanation_text = ask_ai_tutor(
-                                        item["question"], item["chosen"], item["correct"], item["explanation"]
-                                    )
-                                    st.session_state[tutor_key] = explanation_text
-
-                            if tutor_key in st.session_state:
-                                st.info(st.session_state[tutor_key])
-
-                        st.write("---")
