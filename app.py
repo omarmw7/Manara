@@ -6,6 +6,16 @@ import string
 import pandas as pd
 from supabase import create_client, Client
 
+# ========================================================
+# 🔑 المفاتيح والربط المباشر
+# ========================================================
+GEMINI_API_KEY = "AQ.Ab8RN6Kp696FTmr7JoZn7lJbw747xx1oLsY1dA_s7VdNm9MSgw"
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+# تهيئة الاتصالات
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+genai.configure(api_key=GEMINI_API_KEY)
+
 # --- ضبط الصفحة وتنسيق الاتجاه (RTL) ---
 st.set_page_config(
     page_title="منصة منارة التعليمية",
@@ -21,19 +31,6 @@ st.markdown("""
     div[data-testid="stExpander"] { direction: rtl; text-align: right; }
 </style>
 """, unsafe_allow_html=True)
-
-# --- جلب المفاتيح بأمان من st.secrets ---
-try:
-    SUPABASE_URL = st.secrets["SUPABASE_URL"]
-    SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
-    GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-except Exception:
-    st.error("⚠️ يرجى التأكد من إضافة المفاتيح (SUPABASE_URL, SUPABASE_KEY, GEMINI_API_KEY) داخل st.secrets.")
-    st.stop()
-
-# تهيئة الاتصالات
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-genai.configure(api_key=GEMINI_API_KEY)
 
 # بيانات المعلمين
 TEACHERS_DB = {
@@ -84,7 +81,7 @@ def create_quiz_with_gemini(pdf_bytes, subject, title, num_q, diff, allow_tf, ma
         }}
       ]
     }}
-    ملاحظة: correct_index هو فهرس الإجابة الصحيحة ويبدأ من الرقم 0.
+    ملاحظة: correct_index هو فهرس الإجابة الصحيحة ويبدأ دائماً من الرقم 0.
     """
 
     res = model.generate_content([
@@ -101,8 +98,8 @@ def analyze_class_submissions(subject, submissions_data):
 
     المطلوب:
     قدم تقريراً تشخيصياً واضحاً وموجهاً للأستاذ:
-    1. المفاهيم أو الأسئلة التي تكررت فيها أخطاء الطلاب.
-    2. نصائح وتوصيات تعليمية للتركيز عليها في الحصة القادمة.
+    1. المفاهيم التي تكررت فيها أخطاء الطلاب.
+    2. نصائح وتوصيات للتركيز عليها في الحصة القادمة.
     """
     res = model.generate_content(prompt)
     return res.text
@@ -116,12 +113,12 @@ def ask_ai_tutor(question, student_ans, correct_ans, explanation):
     - الإجابة الصحيحة: {correct_ans}
     - التفسير: {explanation}
 
-    اشرح للطالب بأسلوب مبسط جداً وداعم لماذا إجابته كانت غير دقيقة، وكيف يستوعب الفكرة الصحيحة بسهولة.
+    اشرح للطالب بأسلوب مبسط وداعم سبب عدم دقة إجابته، وكيف يتذكر الصواب دائماً.
     """
     res = model.generate_content(prompt)
     return res.text
 
-# --- واجهة التطبيق ---
+# --- واجهة التطبيق الرئيسية ---
 st.title("🎓 منصة منارة الذكية للتقييم والتعليم")
 role = st.sidebar.radio("اختر البوابة:", ["👨‍🏫 بوابة المعلم", "👨‍🎓 بوابة الطالب"])
 
@@ -162,7 +159,7 @@ if role == "👨‍🏫 بوابة المعلم":
             st.subheader("🤖 توليد اختبار ذكي جديد من ملف PDF")
             c_title, c_num, c_diff = st.columns([2, 1, 1])
             with c_title:
-                quiz_title = st.text_input("عنوان الدرس / الاختبار:", placeholder="مثال: قوانين الحركة لنيوتن")
+                quiz_title = st.text_input("عنوان الدرس / الاختبار:", placeholder="مثال: قوانين الوراثة لمندل")
             with c_num:
                 num_q = st.number_input("عدد الأسئلة:", 1, 25, 5)
             with c_diff:
@@ -186,7 +183,7 @@ if role == "👨‍🏫 بوابة المعلم":
             pdf_file = st.file_uploader("ارفع ملف الدرس بصيغة (PDF):", type=["pdf"])
 
             if pdf_file and quiz_title and st.button("🚀 توليد الاختبار ونشره", type="primary"):
-                with st.spinner("يقوم Gemini 1.5 Flash الآن بقراءة الملف وهندسة الأسئلة والشروحات..."):
+                with st.spinner("يقوم Gemini 1.5 Flash الآن باستيعاب الدرس وهندسة الأسئلة والشروحات..."):
                     try:
                         ai_data = create_quiz_with_gemini(
                             pdf_file.getvalue(), subject, quiz_title, num_q, diff, allow_tf, enable_summary
@@ -205,7 +202,7 @@ if role == "👨‍🏫 بوابة المعلم":
                             "questions": ai_data.get("questions", [])
                         }).execute()
 
-                        st.success(f"🎉 تم نشر الاختبار بنجاح! كود الاختبار للطلاب: **{quiz_code}**")
+                        st.success(f"🎉 تم نشر الاختبار بنجاح! كود الاختبار للطلاب هو: **{quiz_code}**")
                     except Exception as e:
                         st.error(f"حدث خطأ أثناء المعالجة: {e}")
 
@@ -248,8 +245,8 @@ if role == "👨‍🏫 بوابة المعلم":
 
                 st.divider()
 
-                if st.button("🤖 تشخيص نقاط ضعف الطلاب عبر الذكاء الاصطناعي", type="primary"):
-                    with st.spinner("جاري تحليل كافة إجابات الطلاب واستخراج نقاط الضعف..."):
+                if st.button("🤖 تشخيص أداء الطلاب عبر الذكاء الاصطناعي", type="primary"):
+                    with st.spinner("جاري قراءة كافة إجابات الطلاب واستخراج نقاط الضعف..."):
                         report = analyze_class_submissions(subject, sub_res.data[:30])
                         st.markdown("### 📋 التقرير التشخيصي الذكي:")
                         st.success(report)
@@ -274,7 +271,7 @@ elif role == "👨‍🎓 بوابة الطالب":
     target_quiz = None
 
     if access_type == "🔑 إدخال كود الاختبار (Quiz Code)":
-        entered_code = st.text_input("أدخل كود الاختبار (مثال: أحيا-1234):").strip()
+        entered_code = st.text_input("أدخل كود الاختبار:").strip()
         if entered_code:
             res_code = supabase.table("quizzes").select("*").eq("quiz_code", entered_code).execute()
             if res_code.data:
@@ -404,7 +401,7 @@ elif role == "👨‍🎓 بوابة الطالب":
                             st.write(f"- إجابتك: {item['chosen']}")
                             st.write(f"- الإجابة الصحيحة: {item['correct']}")
 
-                        st.caption(f"💡 التفسير: {item['explanation']}")
+                        st.caption(f"💡 السبب: {item['explanation']}")
 
                         if not item["is_correct"]:
                             tutor_key = f"tutor_ans_{target_quiz['id']}_{idx}"
