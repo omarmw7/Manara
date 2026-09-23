@@ -48,7 +48,7 @@ def generate_quiz_code(subject):
 # --- دوال الذكاء الاصطناعي (Gemini 1.5 Flash) ---
 def create_quiz_with_gemini(pdf_bytes, subject, title, num_q, diff, allow_tf, make_summary):
     model = genai.GenerativeModel(
-        model_name="gemini-2.0-flash",
+        model_name="gemini-3.6-flash",
         generation_config={
             "response_mime_type": "application/json",
             "temperature": 0.2
@@ -91,7 +91,7 @@ def create_quiz_with_gemini(pdf_bytes, subject, title, num_q, diff, allow_tf, ma
     return json.loads(res.text)
 
 def analyze_class_submissions(subject, submissions_data):
-    model = genai.GenerativeModel("gemini-2.0-flash")
+    model = genai.GenerativeModel("gemini-3.6-flash")
     prompt = f"""
     أنت مستشار تربوي. إليك بيانات أداء الطلاب في مادة ({subject}):
     {json.dumps(submissions_data, ensure_ascii=False)}
@@ -105,7 +105,7 @@ def analyze_class_submissions(subject, submissions_data):
     return res.text
 
 def ask_ai_tutor(question, student_ans, correct_ans, explanation):
-    model = genai.GenerativeModel("gemini-2.0-flash")
+    model = genai.GenerativeModel("gemini-3.6-flash")
     prompt = f"""
     أنت معلم خصوصي ودود ومشجع. الطالب أخطأ في هذا السؤال:
     - السؤال: {question}
