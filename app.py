@@ -4,16 +4,22 @@ import json
 from groq import Groq
 from supabase import create_client, Client
 
-# مفاتيح الربط الإدارية المحدثة
-SUPABASE_URL = "https://yaedsonblycyqchkrgdk.supabase.co"
-SUPABASE_KEY = "sb_publishable_Q0iq5flGZxer4V6lrdar-w_5ya0PxwC"
+# قراءة مفاتيح Supabase حصرياً من إعدادات Streamlit Secrets
+try:
+    SUPABASE_URL = st.secrets["SUPABASE_URL"]
+    SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+except Exception as e:
+    st.error("يرجى إعداد مفاتيح Supabase (Secrets) في لوحة تحكم Streamlit Cloud أولاً.")
+    st.stop()
+
+# مفتاح Groq موضوع مباشرة في الكود
 GROQ_API_KEY = "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"
 
 # إنشاء عميل Supabase و Groq
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 groq_client = Groq(api_key=GROQ_API_KEY)
 
-# حسابات الأساتذة والمواد المحدثة
+# حسابات الأساتذة والمواد
 TEACHERS_DB = {
     "أ. عمر": {"password": "bio123", "subject": "الأحياء"},
     "أ. سيد": {"password": "math123", "subject": "الرياضيات"},
