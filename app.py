@@ -28,7 +28,7 @@ groq_client = Groq(api_key=GROQ_API_KEY)
 
 # عميل OpenAI موجه لسيرفرات GitHub Models الرسمية المجانية
 github_ai_client = OpenAI(
-    base_url="https://models.github.ai/inference/v1",
+    base_url="https://models.github.ai/inference",  # بدون /v1
     api_key=GITHUB_TOKEN,
     timeout=120.0
 )
@@ -146,7 +146,7 @@ def create_quiz_with_gpt4o(pdf_bytes, subject, title, num_q, diff, allow_tf, mak
         })
 
     response = github_ai_client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="openai/gpt-4o-mini",  # أضفنا openai/ في البداية
         messages=[{"role": "user", "content": user_content}],
         response_format={"type": "json_object"},
         temperature=0.2
