@@ -12,7 +12,7 @@ import pandas as pd
 # ========================================================
 # 🔑 إعدادات الربط والمفاتيح
 # ========================================================
-GEMINI_API_KEY = st.secrets.get("AQ.Ab8RN6L0PsPmQIamfBFU6zip1PNKf6Ac94Aje1A9ISN3uWSW7Q")
+GEMINI_API_KEY = "AQ.Ab8RN6L0PsPmQIamfBFU6zip1PNKf6Ac94Aje1A9ISN3uWSW7Q"
 SUPABASE_URL = st.secrets.get("SUPABASE_URL")
 SUPABASE_KEY = st.secrets.get("SUPABASE_KEY")
 
