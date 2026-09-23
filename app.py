@@ -219,9 +219,15 @@ if role == "👨‍🏫 الأستاذ":
                         opt3 = st.text_input(f"الخيار 3:", value=opts[2] if len(opts)>2 else "3) ", key=f"opt3_{idx}")
                         opt4 = st.text_input(f"الخيار 4:", value=opts[3] if len(opts)>3 else "4) ", key=f"opt4_{idx}")
                         
-                        correct_ans = st.selectbox(f"الإجابة الصحيحة للسؤال {idx + 1}:", ["1", "2", "3", "4"], 
-                                                   index=["1", "2", "3", "4"].index(str(q.get('correct', '1')) if str(q.get('correct', '1')) in ["1", "2", "3", "4"] else 0),
-                                                   key=f"corr_{idx}")
+                        raw_correct = str(q.get('correct', '1')).strip()
+                        default_idx = ["1", "2", "3", "4"].index(raw_correct) if raw_correct in ["1", "2", "3", "4"] else 0
+                        
+                        correct_ans = st.selectbox(
+                            f"الإجابة الصحيحة للسؤال {idx + 1}:", 
+                            ["1", "2", "3", "4"], 
+                            index=default_idx,
+                            key=f"corr_{idx}"
+                        )
                         
                         updated_questions.append({
                             "id": idx + 1,
