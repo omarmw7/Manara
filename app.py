@@ -28,7 +28,7 @@ groq_client = Groq(api_key=GROQ_API_KEY)
 
 # عميل OpenAI موجه لسيرفرات GitHub Models الرسمية المجانية
 github_ai_client = OpenAI(
-    base_url="https://models.github.ai/inference",
+    base_url="https://models.github.ai/inference/v1",
     api_key=GITHUB_TOKEN,
     timeout=120.0
 )
