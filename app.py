@@ -106,12 +106,16 @@ def clean_and_parse_json(text):
         raise ValueError(f"تعذر استخراج كائن JSON صالح من الرد: {clean_text[:100]}")
 
 def create_quiz_with_gpt4o(pdf_bytes, subject, title, num_q, diff, allow_tf, make_summary):
-    # تحويل صفحات الـ PDF إلى صور لتقرأها عين GPT-4o-mini
+    # التحقق من وجود المفتاح قبل البدء
+    if not GITHUB_TOKEN or GITHUB_TOKEN.startswith("ghp_ضع"):
+        raise ValueError("مفتاح GITHUB_TOKEN غير موجود أو غير معرّف بشكل صحيح. يرجى التأكد من وضعه في الكود أو secrets.")
+
+    # تحويل صفحات الـ PDF إلى صور خفيفة
     page_images = convert_pdf_to_base64_images(pdf_bytes, max_pages=3)
     
-    types_desc = "جميع الأسئلة اختيار من متعدد بـ 4 خيارات (إجابة واحدة صحيحة، و3 خيارات مشتتة ذكية ومتقاربة لقياس الفهم الحقيقي)."
+    types_desc = "جميع الأسئلة اختيار من متعدد بـ 4 خيارات (إجابة واحدة صحيحة، و3 خيارات مشتتة ذكية ومتقاربة)."
     if allow_tf:
-        types_desc += " يمكنك تنويع الأسئلة بتضمين أسئلة (صح أو خطأ) بخيارين: 1) صح، 2) خطأ."
+        types_desc += " يمكنك تنويع الأسئلة بتضمين أسئلة صح أو خطأ بخيارين: 1) صح، 2) خطأ."
 
     prompt_text = f"""
 أنت موجه تربوي وخبير امتحانات متخصص في مادة ({subject}).
@@ -119,7 +123,7 @@ def create_quiz_with_gpt4o(pdf_bytes, subject, title, num_q, diff, allow_tf, mak
 
 المعايير التربوية:
 1. انظر بعناية للصفحات واقرأ النصوص والجداول والمفاهيم بدقة.
-2. اصنع بالضبط {num_q} أسئلة بمستوى صعوبة ({diff}) تقيس الفهم والتحليل وابتعد عن الأسئلة السطحية أو المباشرة.
+2. اصنع بالضبط {num_q} أسئلة بمستوى صعوبة ({diff}) تقيس الفهم الحقيقي.
 3. نمط الأسئلة: {types_desc}.
 4. إذا كان make_summary = {make_summary}، اكتب ملخصاً في حقل summary يشرح جوهر الدرس في 4 نقاط رئيسية، وإلا اتركه فارغاً.
 
@@ -129,10 +133,10 @@ def create_quiz_with_gpt4o(pdf_bytes, subject, title, num_q, diff, allow_tf, mak
   "questions": [
     {{
       "id": 1,
-      "question": "نص السؤال الدقيق من واقع محتوى الدرس؟",
+      "question": "نص السؤال الدقيق من صلب الدرس؟",
       "options": ["الخيار الأول", "الخيار الثاني", "الخيار الثالث", "الخيار الرابع"],
       "correct_index": 0,
-      "explanation": "شرح علمي مستند إلى صفحات الدرس لسبب صحة هذا الخيار واستبعاد الباقي"
+      "explanation": "شرح علمي مستند إلى صفحات الدرس لسبب صحة هذا الخيار"
     }}
   ]
 }}
@@ -147,21 +151,21 @@ def create_quiz_with_gpt4o(pdf_bytes, subject, title, num_q, diff, allow_tf, mak
         })
 
     response = github_ai_client.chat.completions.create(
-        model="openai/gpt-4o-mini",  # أضفنا openai/ في البداية
+        model="openai/gpt-4o-mini",
         messages=[{"role": "user", "content": user_content}],
         response_format={"type": "json_object"},
         temperature=0.2
     )
 
-    # قراءة النص بأمان
-    if hasattr(response, "choices"):
+    # التحقق من أن الاستجابة نظامية وليست نص فحص السيرفر
+    if hasattr(response, "choices") and response.choices:
         raw_text = response.choices[0].message.content
-    elif isinstance(response, str):
-        raw_text = response
     else:
         raw_text = str(response)
 
-    # استخدام الدالة المنظفة لفك الـ JSON بنجاح
+    if not raw_text or raw_text.strip().upper() == "OK":
+        raise ValueError("سيرفر GitHub رفض المصادقة وأرجع 'OK'. يرجى التأكد من صحة التوكن GITHUB_TOKEN وتفعيله.")
+
     return clean_and_parse_json(raw_text)
 # ========================================================
 # ⚡ دوال الطلاب والتحليلات عبر Groq (سرعة + رصيد ضخم)
