@@ -14,7 +14,7 @@ import re
 # ========================================================
 # 1. مفتاح GitHub Models (GPT-4o-mini) لتوليد الاختبارات بدقة فائقة
 # ضع مفتاح ghp_ الخاص بك هنا كبديل مؤكد
-GITHUB_TOKEN = st.secrets.get("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")
+GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", "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")
 
 # 2. مفتاح Groq للمعلم الذكي الخاص بالطلاب (14 ألف طلب يومياً)
 GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", "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")
