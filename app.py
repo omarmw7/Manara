@@ -320,3 +320,102 @@ elif role == "👨‍🎓 بوابة الطالب":
                         "options": opts,
                         "correct_idx": q["correct_index"],
                         "explanation": q.get("explanation", "")
+                    })
+                if target_quiz.get("shuffle_enabled"):
+                    random.shuffle(prepared_qs)
+                st.session_state[session_quiz_key] = prepared_qs
+
+            active_quiz = st.session_state[session_quiz_key]
+            result_state_key = f"result_{target_quiz['id']}_{student_name.strip()}"
+
+            if result_state_key not in st.session_state:
+                user_choices = {}
+                with st.form("exam_form"):
+                    for idx, q in enumerate(active_quiz):
+                        st.markdown(f"**س{idx+1}: {q['question']}**")
+                        opts_text = [o[1] for o in q["options"]]
+                        user_choices[idx] = st.radio(
+                            "اختر الإجابة:",
+                            options=list(range(len(opts_text))),
+                            format_func=lambda x, texts=opts_text: texts[x],
+                            key=f"field_{target_quiz['id']}_{idx}",
+                            index=None
+                        )
+                        st.write("")
+
+                    finish_btn = st.form_submit_button("📩 إنهاء وتسليم الإجابات", type="primary")
+
+                if finish_btn:
+                    if any(c is None for c in user_choices.values()):
+                        st.error("يرجى الإجابة عن جميع الأسئلة قبل تسليم الاختبار.")
+                    else:
+                        score = 0
+                        total = len(active_quiz)
+                        report_details = []
+
+                        for idx, q in enumerate(active_quiz):
+                            selected_pos = user_choices[idx]
+                            orig_idx = q["options"][selected_pos][0]
+                            selected_str = q["options"][selected_pos][1]
+
+                            correct_str = next(opt[1] for opt in q["options"] if opt[0] == q["correct_idx"])
+                            is_correct = (orig_idx == q["correct_idx"])
+                            if is_correct:
+                                score += 1
+
+                            report_details.append({
+                                "question": q["question"],
+                                "chosen": selected_str,
+                                "correct": correct_str,
+                                "is_correct": is_correct,
+                                "explanation": q["explanation"]
+                            })
+
+                        # الحفظ في Supabase
+                        supabase.table("submissions").insert({
+                            "quiz_id": target_quiz["id"],
+                            "subject": target_quiz["subject"],
+                            "student_name": student_name.strip(),
+                            "score": score,
+                            "total": total,
+                            "answers": report_details
+                        }).execute()
+
+                        st.session_state[result_state_key] = {
+                            "score": score,
+                            "total": total,
+                            "details": report_details
+                        }
+                        st.rerun()
+
+            if result_state_key in st.session_state:
+                res_data = st.session_state[result_state_key]
+                st.balloons()
+                st.success(f"أحسنت يا {student_name}! نتيجتك هي: {res_data['score']} من {res_data['total']}")
+
+                st.subheader("🔍 مراجعة الإجابات والتفسيرات:")
+                for idx, item in enumerate(res_data["details"]):
+                    with st.container():
+                        if item["is_correct"]:
+                            st.markdown(f"✅ **س{idx+1}: {item['question']}**")
+                            st.write(f"- إجابتك: {item['chosen']}")
+                        else:
+                            st.markdown(f"❌ **س{idx+1}: {item['question']}**")
+                            st.write(f"- إجابتك: {item['chosen']}")
+                            st.write(f"- الإجابة الصحيحة: {item['correct']}")
+
+                        st.caption(f"💡 التفسير: {item['explanation']}")
+
+                        if not item["is_correct"]:
+                            tutor_key = f"tutor_ans_{target_quiz['id']}_{idx}"
+                            if st.button(f"🤖 اطلب من المعلم الذكي شرح هذا السؤال", key=f"tutor_btn_{target_quiz['id']}_{idx}"):
+                                with st.spinner("المعلم الذكي يكتب لك الشرح الآن..."):
+                                    explanation_text = ask_ai_tutor(
+                                        item["question"], item["chosen"], item["correct"], item["explanation"]
+                                    )
+                                    st.session_state[tutor_key] = explanation_text
+
+                            if tutor_key in st.session_state:
+                                st.info(st.session_state[tutor_key])
+
+                        st.write("---")
