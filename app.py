@@ -153,19 +153,30 @@ def create_quiz_smart(pdf_bytes, subject, title, num_q, diff, allow_tf, make_sum
             "image_url": {"url": img_url}
         })
 
-    response = ai_client.chat.completions.create(
-        model=MODEL_NAME,
-        messages=[{"role": "user", "content": user_content}],
+    response = openrouter_client.chat.completions.create(
+        model="openrouter/free",
+        messages=[
+            {
+                "role": "system",
+                "content": "You are a strict JSON generator. You must start your response directly with { and output ONLY a valid JSON object. Do not include any introduction, thought process, or commentary outside the JSON."
+            },
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt_text},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:application/pdf;base64,{b64_pdf}"
+                        }
+                    }
+                ]
+            }
+        ],
         response_format={"type": "json_object"},
-        temperature=0.2
+        temperature=0.2,
+        max_tokens=4000  # مساحة كافية لتوليد كل الأسئلة دون أن ينقطع
     )
-
-    if hasattr(response, "choices") and response.choices:
-        raw_text = response.choices[0].message.content
-    else:
-        raw_text = str(response)
-
-    return clean_and_parse_json(raw_text)
 
 # ========================================================
 # ⚡ دوال الطلاب والتحليلات عبر Groq
