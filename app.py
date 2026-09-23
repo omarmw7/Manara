@@ -18,7 +18,7 @@ SUPABASE_KEY = st.secrets.get("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 genai.configure(api_key=GEMINI_API_KEY)
 
-MODEL_NAME = "gemini-3.6-flash"
+MODEL_NAME = "gemini-3.5-flash"
 
 # --- ضبط الصفحة وتنسيق الاتجاه (RTL) ---
 st.set_page_config(
