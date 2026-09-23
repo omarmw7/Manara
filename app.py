@@ -13,7 +13,7 @@ import re
 # 🔑 إعدادات الربط والمفاتيح
 # ========================================================
 # 1. مفتاح OpenRouter (حطه هون أو في secrets)
-OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", "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")
+OPENROUTER_API_KEY = "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"
 
 # 2. مفتاح Groq للطلاب (مدمج وجاهز)
 GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", "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")
