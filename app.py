@@ -22,7 +22,7 @@ groq_client = Groq(api_key=GROQ_API_KEY)
 # حسابات الأساتذة والمواد
 TEACHERS_DB = {
     "أ. عمر": {"password": "bio123", "subject": "الأحياء"},
-    "أ. سيد": {"password": "math123", "subject": "الرياضيات"},
+    "أ. فتوح": {"password": "math123", "subject": "الرياضيات"},
     "أ. رجب": {"password": "islamic123", "subject": "التربية الإسلامية"}
 }
 
@@ -33,6 +33,17 @@ role = st.sidebar.radio("اختر الدور:", ["👨‍🏫 الأستاذ", "
 
 if 'logged_teacher' not in st.session_state:
     st.session_state['logged_teacher'] = None
+
+# دالة مساعدة لفك ترميز الأسئلة بأمان
+def parse_questions_data(raw_data):
+    if isinstance(raw_data, str):
+        try:
+            return json.loads(raw_data)
+        except Exception:
+            return []
+    elif isinstance(raw_data, list):
+        return raw_data
+    return []
 
 # ---------------------------------------------------------
 # بوابة الأستاذ
@@ -136,20 +147,22 @@ if role == "👨‍🏫 الأستاذ":
                     except Exception as e:
                         st.error(f"حدث خطأ أثناء معالجة الاختبار: {e}")
 
-            # قراءة ومعاينة الاختبار من قاعدة البيانات بأمان
+            # قراءة ومعاينة الاختبار مباشرة للأستاذ
             try:
                 res = supabase.table("quizzes").select("questions").eq("subject", current_subject).execute()
                 if res.data:
-                    st.write("---")
-                    st.subheader(f"📋 معاينة اختبار مادة {current_subject} (من قاعدة البيانات):")
-                    quiz_data = res.data[0]['questions']
-                    for q in quiz_data:
-                        st.write(f"**س{q['id']}: {q['question']}**")
-                        for opt in q['options']:
-                            st.write(f"- {opt}")
-                        st.write(f"✅ **الإجابة الصحيحة:** ({q['correct']})")
+                    quiz_data = parse_questions_data(res.data[0]['questions'])
+                    if quiz_data:
                         st.write("---")
-            except Exception:
+                        st.subheader(f"📋 معاينة الاختبار المعتمد حالياً لمادة ({current_subject}):")
+                        for q in quiz_data:
+                            if isinstance(q, dict):
+                                st.write(f"**س{q.get('id', '')}: {q.get('question', '')}**")
+                                for opt in q.get('options', []):
+                                    st.write(f"- {opt}")
+                                st.write(f"✅ **الإجابة الصحيحة:** ({q.get('correct', '')})")
+                                st.write("---")
+            except Exception as e:
                 pass
 
         with tab2:
@@ -162,8 +175,8 @@ if role == "👨‍🏫 الأستاذ":
                         st.write(f"👤 **اسم الطالب:** {sub['student_name']}")
                         st.write(f"💯 **الدرجة:** {sub['score']} من {sub['total']}")
                         st.write("**تفاصيل إجابات الطالب:**")
-                        for detail in sub['details']:
-                            st.write(f"- {detail['question']} | إجابة الطالب: ({detail['student_ans']}) | الإجابة الصحيحة: ({detail['correct_ans']})")
+                        for detail in sub.get('details', []):
+                            st.write(f"- {detail.get('question', '')} | إجابة الطالب: ({detail.get('student_ans', '')}) | الإجابة الصحيحة: ({detail.get('correct_ans', '')})")
                         st.write("---")
                 else:
                     st.info(f"لا توجد إجابات مقدمة لمادة {current_subject} حتى الآن.")
@@ -190,64 +203,74 @@ elif role == "👨‍🎓 الطالب":
         st.write("---")
         st.subheader(f"📝 اختبار مادة: {selected_subject}")
         
-        selected_quiz_data = next(item['questions'] for item in res_quizzes.data if item['subject'] == selected_subject)
+        raw_selected = next(item['questions'] for item in res_quizzes.data if item['subject'] == selected_subject)
+        selected_quiz_data = parse_questions_data(raw_selected)
         
         user_answers = {}
         all_answered = True
         
-        for q in selected_quiz_data:
-            st.markdown(f"#### س{q['id']}: {q['question']}")
-            
-            chosen = st.radio(
-                "اختر الإجابة:", 
-                q['options'], 
-                index=None,
-                key=f"q_{selected_subject}_{q['id']}"
-            )
-            
-            if chosen is None:
-                all_answered = False
-                chosen_char = None
-            else:
-                chosen_char = chosen.split(")")[0].strip() if ")" in chosen else chosen[0]
-            
-            user_answers[q['id']] = {
-                "chosen_char": chosen_char,
-                "question": q['question'],
-                "correct_char": q['correct']
-            }
-            st.write("")
-        
-        if st.button("تسليم الحل"):
-            if not student_name:
-                st.warning("يرجى كتابة اسمك الكامل قبل إرسال الحل.")
-            elif not all_answered:
-                st.warning("يرجى الإجابة عن جميع الأسئلة قبل تسليم الحل.")
-            else:
-                score = 0
-                total = len(selected_quiz_data)
-                details = []
-                
-                for q_id, ans in user_answers.items():
-                    is_correct = (ans['chosen_char'] == ans['correct_char'])
-                    if is_correct:
-                        score += 1
+        if selected_quiz_data:
+            for q in selected_quiz_data:
+                if isinstance(q, dict):
+                    q_id = q.get('id', 1)
+                    q_text = q.get('question', '')
+                    q_options = q.get('options', [])
+                    q_correct = q.get('correct', '')
                     
-                    details.append({
-                        "question": ans['question'],
-                        "student_ans": ans['chosen_char'],
-                        "correct_ans": ans['correct_char']
-                    })
-                
-                supabase.table("submissions").insert({
-                    "student_name": student_name,
-                    "subject": selected_subject,
-                    "score": score,
-                    "total": total,
-                    "details": details
-                }).execute()
-                
-                st.balloons()
-                st.success(f"تم تسليم إجابة اختبار {selected_subject} بنجاح يا {student_name}! درجتك هي: {score} من {total}")
+                    st.markdown(f"#### س{q_id}: {q_text}")
+                    
+                    chosen = st.radio(
+                        "اختر الإجابة:", 
+                        q_options, 
+                        index=None,
+                        key=f"q_{selected_subject}_{q_id}"
+                    )
+                    
+                    if chosen is None:
+                        all_answered = False
+                        chosen_char = None
+                    else:
+                        chosen_char = chosen.split(")")[0].strip() if ")" in chosen else chosen[0]
+                    
+                    user_answers[q_id] = {
+                        "chosen_char": chosen_char,
+                        "question": q_text,
+                        "correct_char": q_correct
+                    }
+                    st.write("")
+            
+            if st.button("تسليم الحل"):
+                if not student_name:
+                    st.warning("يرجى كتابة اسمك الكامل قبل إرسال الحل.")
+                elif not all_answered:
+                    st.warning("يرجى الإجابة عن جميع الأسئلة قبل تسليم الحل.")
+                else:
+                    score = 0
+                    total = len(selected_quiz_data)
+                    details = []
+                    
+                    for q_id, ans in user_answers.items():
+                        is_correct = (ans['chosen_char'] == ans['correct_char'])
+                        if is_correct:
+                            score += 1
+                        
+                        details.append({
+                            "question": ans['question'],
+                            "student_ans": ans['chosen_char'],
+                            "correct_ans": ans['correct_char']
+                        })
+                    
+                    supabase.table("submissions").insert({
+                        "student_name": student_name,
+                        "subject": selected_subject,
+                        "score": score,
+                        "total": total,
+                        "details": details
+                    }).execute()
+                    
+                    st.balloons()
+                    st.success(f"تم تسليم إجابة اختبار {selected_subject} بنجاح يا {student_name}! درجتك هي: {score} من {total}")
+        else:
+            st.warning("عذراً، لا توجد أسئلة صالحة في هذا الاختبار بعد.")
     else:
         st.info("لا توجد أي اختبارات متاحة حالياً لأي مادة. يرجى الدخول من حساب الأستاذ وتوليد اختبار أولاً.")
