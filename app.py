@@ -1,20 +1,25 @@
 import streamlit as st
-import google.generativeai as genai
+from groq import Groq
+from supabase import create_client, Client
+import pypdf
 import json
 import random
 import string
 import pandas as pd
-from supabase import create_client, Client
 
 # ========================================================
-# 🔑 المفاتيح والربط المباشر
+# 🔑 المفاتيح وإعدادات الربط المباشر
 # ========================================================
-GEMINI_API_KEY = "AQ.Ab8RN6Kp696FTmr7JoZn7lJbw747xx1oLsY1dA_s7VdNm9MSgw"
-SUPABASE_URL = st.secrets["SUPABASE_URL"]
-SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+# ضع مفتاح Groq الجديد هنا (أو دعه يقرأ من st.secrets)
+GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", "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")
+SUPABASE_URL = st.secrets.get("SUPABASE_URL")
+SUPABASE_KEY = st.secrets.get("SUPABASE_KEY")
+
 # تهيئة الاتصالات
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-genai.configure(api_key=GEMINI_API_KEY)
+groq_client = Groq(api_key=GROQ_API_KEY)
+
+MODEL_NAME = "llama-3.3-70b-versatile"
 
 # --- ضبط الصفحة وتنسيق الاتجاه (RTL) ---
 st.set_page_config(
@@ -45,78 +50,105 @@ def generate_quiz_code(subject):
     prefix = subject[:3].strip()
     return f"{prefix}-{code_chars}"
 
-# --- دوال الذكاء الاصطناعي (Gemini 1.5 Flash) ---
-def create_quiz_with_gemini(pdf_bytes, subject, title, num_q, diff, allow_tf, make_summary):
-    model = genai.GenerativeModel(
-        model_name="gemini-3.6-flash",
-        generation_config={
-            "response_mime_type": "application/json",
-            "temperature": 0.2
-        }
+def extract_text_from_pdf(pdf_file, max_chars=16000):
+    """استخراج النصوص النظيفة من الـ PDF بأمان لمنع استهلاك التوكنز"""
+    reader = pypdf.PdfReader(pdf_file)
+    extracted = []
+    for page in reader.pages:
+        text = page.extract_text()
+        if text:
+            extracted.append(text)
+    full_text = "\n".join(extracted)
+    return full_text[:max_chars]
+
+# --- دوال الذكاء الاصطناعي الفائقة (Groq + Llama 3.3 70B) ---
+def create_quiz_with_ai(lesson_text, subject, title, num_q, diff, allow_tf, make_summary):
+    types_desc = "جميع الأسئلة اختيار من متعدد بأربعة خيارات."
+    if allow_tf:
+        types_desc = "قم بتنويع الأسئلة بين: اختيار من متعدد (4 خيارات)، وأسئلة صح أو خطأ (خياران فقط: 1) صح، 2) خطأ)."
+
+    system_prompt = (
+        "أنت موجه تربوي وخبير في صناعة الاختبارات المدرسية الدقيقة. "
+        "مهمتك صياغة أسئلة تقييمية مستندة بدقة للنص المعطى. "
+        "يجب أن تكون مخرجاتك حصراً كائن JSON صالح."
     )
 
-    types_prompt = "جميع الأسئلة اختيار من متعدد بأربعة خيارات."
-    if allow_tf:
-        types_prompt = "قم بتنويع الأسئلة بين: اختيار من متعدد (4 خيارات)، وأسئلة صح أو خطأ (يكون الخياران فقط: 1) صح، 2) خطأ)."
+    user_prompt = f"""
+المادة: {subject}
+عنوان الدرس: {title}
+مستوى الصعوبة: {diff}
+عدد الأسئلة المطلوب: {num_q}
+نمط الأسئلة المطلوب: {types_desc}
 
-    prompt = f"""
-    أنت موجه تربوي وخبير في مادة ({subject}).
-    قم بتحليل ملف الـ PDF المرفق لدرس: ({title}).
+نص الدرس:
+---
+{lesson_text}
+---
 
-    المطلوب:
-    1. استخرج بالضبط {num_q} أسئلة بمستوى صعوبة: ({diff}).
-    2. نمط الأسئلة: {types_prompt}.
-    3. إذا كان make_summary = {make_summary}، اكتب ملخصاً شاملاً من 3-5 نقاط جوهرية للدرس في حقل summary، وإلا اجعله فارغاً.
+المطلوب:
+1. صياغة {num_q} أسئلة دقيقة من صلب النص.
+2. إذا كان make_summary = {make_summary}، اكتب ملخصاً من 3 إلى 5 نقاط لأهم المفاهيم، وإلا اتركه فارغاً.
 
-    أرجع النتيجة حصراً بصيغة كائن JSON بالهيكل الدقيق التالي:
+أخرج النتيجة بهذا الهيكل الحصري:
+{{
+  "summary": "نص الملخص التمهيدي هنا...",
+  "questions": [
     {{
-      "summary": "ملخص الدرس هنا إن وجد...",
-      "questions": [
-        {{
-          "id": 1,
-          "question": "نص السؤال الدقيق من الدرس؟",
-          "options": ["خيار 1", "خيار 2", "خيار 3", "خيار 4"],
-          "correct_index": 0,
-          "explanation": "شرح علمي مبسط لسبب صحة هذا الخيار مستنداً للدرس"
-        }}
-      ]
+      "id": 1,
+      "question": "نص السؤال الدقيق؟",
+      "options": ["خيار 1", "خيار 2", "خيار 3", "خيار 4"],
+      "correct_index": 0,
+      "explanation": "شرح علمي دقيق لسبب صحة هذا الخيار مستنداً للدرس"
     }}
-    ملاحظة: correct_index هو فهرس الإجابة الصحيحة ويبدأ دائماً من الرقم 0.
-    """
+  ]
+}}
+ملاحظة: correct_index هو رقم الفهرس ويبدأ من 0.
+"""
 
-    res = model.generate_content([
-        {"mime_type": "application/pdf", "data": pdf_bytes},
-        prompt
-    ])
-    return json.loads(res.text)
+    chat_completion = groq_client.chat.completions.create(
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ],
+        model=MODEL_NAME,
+        response_format={"type": "json_object"},
+        temperature=0.2
+    )
+
+    return json.loads(chat_completion.choices[0].message.content)
 
 def analyze_class_submissions(subject, submissions_data):
-    model = genai.GenerativeModel("gemini-3.6-flash")
     prompt = f"""
-    أنت مستشار تربوي. إليك بيانات أداء الطلاب في مادة ({subject}):
-    {json.dumps(submissions_data, ensure_ascii=False)}
+أنت مستشار تربوي. إليك بيانات أداء الطلاب في مادة ({subject}):
+{json.dumps(submissions_data, ensure_ascii=False)}
 
-    المطلوب:
-    قدم تقريراً تشخيصياً واضحاً وموجهاً للأستاذ:
-    1. المفاهيم التي تكررت فيها أخطاء الطلاب.
-    2. نصائح وتوصيات للتركيز عليها في الحصة القادمة.
-    """
-    res = model.generate_content(prompt)
-    return res.text
+المطلوب: قدم تقريراً تشخيصياً واضحاً للأستاذ:
+1. المفاهيم التي تكررت فيها أخطاء الطلاب.
+2. نصائح عملية لإعادة شرحها في الحصة القادمة.
+"""
+    completion = groq_client.chat.completions.create(
+        messages=[{"role": "user", "content": prompt}],
+        model=MODEL_NAME,
+        temperature=0.2
+    )
+    return completion.choices[0].message.content
 
 def ask_ai_tutor(question, student_ans, correct_ans, explanation):
-    model = genai.GenerativeModel("gemini-3.6-flash")
     prompt = f"""
-    أنت معلم خصوصي ودود ومشجع. الطالب أخطأ في هذا السؤال:
-    - السؤال: {question}
-    - إجابة الطالب: {student_ans}
-    - الإجابة الصحيحة: {correct_ans}
-    - التفسير: {explanation}
+أنت معلم خصوصي ودود وصبور. الطالب أخطأ في هذا السؤال:
+- السؤال: {question}
+- إجابة الطالب: {student_ans}
+- الإجابة الصحيحة: {correct_ans}
+- التفسير: {explanation}
 
-    اشرح للطالب بأسلوب مبسط وداعم سبب عدم دقة إجابته، وكيف يتذكر الصواب دائماً.
-    """
-    res = model.generate_content(prompt)
-    return res.text
+اشرح للطالب بأسلوب مشجع ومبسط جداً سبب خطئه وكيف يتذكر الإجابة الصحيحة.
+"""
+    completion = groq_client.chat.completions.create(
+        messages=[{"role": "user", "content": prompt}],
+        model=MODEL_NAME,
+        temperature=0.3
+    )
+    return completion.choices[0].message.content
 
 # --- واجهة التطبيق الرئيسية ---
 st.title("🎓 منصة منارة الذكية للتقييم والتعليم")
@@ -156,10 +188,10 @@ if role == "👨‍🏫 بوابة المعلم":
         ])
 
         with tab1:
-            st.subheader("🤖 توليد اختبار ذكي جديد من ملف PDF")
+            st.subheader("🤖 توليد اختبار فائق السرعة من ملف PDF")
             c_title, c_num, c_diff = st.columns([2, 1, 1])
             with c_title:
-                quiz_title = st.text_input("عنوان الدرس / الاختبار:", placeholder="مثال: قوانين الوراثة لمندل")
+                quiz_title = st.text_input("عنوان الدرس / الاختبار:", placeholder="مثال: قوانين الحركة والجاذبية")
             with c_num:
                 num_q = st.number_input("عدد الأسئلة:", 1, 25, 5)
             with c_diff:
@@ -168,13 +200,13 @@ if role == "👨‍🏫 بوابة المعلم":
             st.markdown("#### ⚙️ خيارات الاختبار (اختيارية):")
             col1, col2, col3, col4 = st.columns(4)
             with col1:
-                enable_shuffle = st.checkbox("🔀 عشوائية الأسئلة والخيارات", value=True, help="ترتيب مختلف لكل طالب لمنع الغش")
+                enable_shuffle = st.checkbox("🔀 عشوائية الأسئلة والخيارات", value=True, help="منع الغش باختلاف الترتيب")
             with col2:
                 enable_timer = st.checkbox("⏱️ تفعيل مؤقت زمني", value=False)
             with col3:
                 allow_tf = st.checkbox("⚖️ تضمين صح وخطأ", value=False)
             with col4:
-                enable_summary = st.checkbox("📝 توليد ملخص تمهيدي", value=True, help="ملخص يقرأه الطالب قبل بدء الحل")
+                enable_summary = st.checkbox("📝 توليد ملخص تمهيدي", value=True, help="ملخص يقرأه الطالب قبل البدء")
 
             timer_val = None
             if enable_timer:
@@ -182,29 +214,33 @@ if role == "👨‍🏫 بوابة المعلم":
 
             pdf_file = st.file_uploader("ارفع ملف الدرس بصيغة (PDF):", type=["pdf"])
 
-            if pdf_file and quiz_title and st.button("🚀 توليد الاختبار ونشره", type="primary"):
-                with st.spinner("يقوم Gemini 1.5 Flash الآن باستيعاب الدرس وهندسة الأسئلة والشروحات..."):
+            if pdf_file and quiz_title and st.button("🚀 توليد الاختبار ونشره فوراً", type="primary"):
+                with st.spinner("جاري استخراج النص وتوليد الأسئلة والشروحات عبر LLaMA 3.3 70B في ثانية واحدة..."):
                     try:
-                        ai_data = create_quiz_with_gemini(
-                            pdf_file.getvalue(), subject, quiz_title, num_q, diff, allow_tf, enable_summary
-                        )
-                        quiz_code = generate_quiz_code(subject)
+                        clean_text = extract_text_from_pdf(pdf_file)
+                        if len(clean_text.strip()) < 50:
+                            st.error("تعذر استخراج نص كافٍ من الـ PDF (تأكد أن الملف ليس صوراً فقط).")
+                        else:
+                            ai_data = create_quiz_with_ai(
+                                clean_text, subject, quiz_title, num_q, diff, allow_tf, enable_summary
+                            )
+                            quiz_code = generate_quiz_code(subject)
 
-                        supabase.table("quizzes").insert({
-                            "quiz_code": quiz_code,
-                            "teacher_name": teacher,
-                            "subject": subject,
-                            "lesson_title": quiz_title,
-                            "difficulty": diff,
-                            "timer_minutes": timer_val if enable_timer else None,
-                            "shuffle_enabled": enable_shuffle,
-                            "summary": ai_data.get("summary") if enable_summary else None,
-                            "questions": ai_data.get("questions", [])
-                        }).execute()
+                            supabase.table("quizzes").insert({
+                                "quiz_code": quiz_code,
+                                "teacher_name": teacher,
+                                "subject": subject,
+                                "lesson_title": quiz_title,
+                                "difficulty": diff,
+                                "timer_minutes": timer_val if enable_timer else None,
+                                "shuffle_enabled": enable_shuffle,
+                                "summary": ai_data.get("summary") if enable_summary else None,
+                                "questions": ai_data.get("questions", [])
+                            }).execute()
 
-                        st.success(f"🎉 تم نشر الاختبار بنجاح! كود الاختبار للطلاب هو: **{quiz_code}**")
+                            st.success(f"🎉 تم نشر الاختبار بنجاح في ثوانٍ! كود الاختبار للطلاب هو: **{quiz_code}**")
                     except Exception as e:
-                        st.error(f"حدث خطأ أثناء المعالجة: {e}")
+                        st.error(f"حدث خطأ: {e}")
 
         with tab2:
             st.subheader(f"📚 سجل اختبارات مادة ({subject})")
@@ -245,10 +281,10 @@ if role == "👨‍🏫 بوابة المعلم":
 
                 st.divider()
 
-                if st.button("🤖 تشخيص أداء الطلاب عبر الذكاء الاصطناعي", type="primary"):
-                    with st.spinner("جاري قراءة كافة إجابات الطلاب واستخراج نقاط الضعف..."):
+                if st.button("🤖 تشخيص أداء الطلاب وتحليل الأخطاء بالذكاء الاصطناعي", type="primary"):
+                    with st.spinner("جاري قراءة إجابات الطلاب واستخراج نقاط الضعف..."):
                         report = analyze_class_submissions(subject, sub_res.data[:30])
-                        st.markdown("### 📋 التقرير التشخيصي الذكي:")
+                        st.markdown("### 📋 التقرير التشخيصي الذكي للمعلم:")
                         st.success(report)
 
                 st.write("---")
@@ -401,7 +437,7 @@ elif role == "👨‍🎓 بوابة الطالب":
                             st.write(f"- إجابتك: {item['chosen']}")
                             st.write(f"- الإجابة الصحيحة: {item['correct']}")
 
-                        st.caption(f"💡 السبب: {item['explanation']}")
+                        st.caption(f"💡 التفسير: {item['explanation']}")
 
                         if not item["is_correct"]:
                             tutor_key = f"tutor_ans_{target_quiz['id']}_{idx}"
