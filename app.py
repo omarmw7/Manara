@@ -4,7 +4,7 @@ import json
 from groq import Groq
 from supabase import create_client, Client
 
-# قراءة مفاتيح Supabase حصرياً من إعدادات Streamlit Secrets
+# قراءة مفاتيح Supabase من Streamlit Secrets
 try:
     SUPABASE_URL = st.secrets["SUPABASE_URL"]
     SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
@@ -12,7 +12,7 @@ except Exception as e:
     st.error("يرجى إعداد مفاتيح Supabase (Secrets) في لوحة تحكم Streamlit Cloud أولاً.")
     st.stop()
 
-# مفتاح Groq موضوع مباشرة في الكود
+# مفتاح Groq
 GROQ_API_KEY = "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"
 
 # إنشاء عميل Supabase و Groq
@@ -22,7 +22,7 @@ groq_client = Groq(api_key=GROQ_API_KEY)
 # حسابات الأساتذة والمواد
 TEACHERS_DB = {
     "أ. عمر": {"password": "bio123", "subject": "الأحياء"},
-    "أ. فتوح": {"password": "math123", "subject": "الرياضيات"},
+    "أ. سيد": {"password": "math123", "subject": "الرياضيات"},
     "أ. رجب": {"password": "islamic123", "subject": "التربية الإسلامية"}
 }
 
@@ -34,14 +34,22 @@ role = st.sidebar.radio("اختر الدور:", ["👨‍🏫 الأستاذ", "
 if 'logged_teacher' not in st.session_state:
     st.session_state['logged_teacher'] = None
 
-# دالة مساعدة لفك ترميز الأسئلة بأمان
+# دالة مساعدة لفك وإصلاح بيانات الأسئلة بجميع أشكالها
 def parse_questions_data(raw_data):
+    if not raw_data:
+        return []
     if isinstance(raw_data, str):
         try:
-            return json.loads(raw_data)
+            parsed = json.loads(raw_data)
+            return parse_questions_data(parsed)
         except Exception:
             return []
     elif isinstance(raw_data, list):
+        if len(raw_data) > 0 and isinstance(raw_data[0], str):
+            try:
+                return [json.loads(item) if isinstance(item, str) else item for item in raw_data]
+            except Exception:
+                pass
         return raw_data
     return []
 
@@ -100,7 +108,7 @@ if role == "👨‍🏫 الأستاذ":
 أنت معلم متخصص في مادة ({current_subject}). أمامك نص دراسي مصفّى. 
 اصنع منه 7 أسئلة اختيار من متعدد دقيقة تعتمد على النص المرفق.
 
-يجب أن ترجع النتيجة كـ JSON صريح فقط بدون أي مقدمات.
+يجب أن ترجع النتيجة كـ JSON صريح فقط بدون أي مقدمات أو كلام خارجي.
 التنسيق المطلوب تماماً:
 [
   {{
@@ -136,34 +144,40 @@ if role == "👨‍🏫 الأستاذ":
                         
                         quiz_json = json.loads(raw_response.strip())
                         
-                        # حفظ الاختبار في قاعدة بيانات Supabase
+                        # حفظ الاختبار في قاعدة البيانات
                         supabase.table("quizzes").upsert({
                             "subject": current_subject,
                             "questions": quiz_json
                         }, on_conflict="subject").execute()
                         
-                        st.success(f"تم حفظ ونشر اختبار مادة {current_subject} (7 أسئلة) في قاعدة البيانات بنجاح!")
+                        # حفظ في الجلسة للحصول على Preview فوراً
+                        st.session_state[f"preview_{current_subject}"] = quiz_json
+                        st.success(f"تم حفظ ونشر اختبار مادة {current_subject} (7 أسئلة) بنجاح!")
                         
                     except Exception as e:
                         st.error(f"حدث خطأ أثناء معالجة الاختبار: {e}")
 
-            # قراءة ومعاينة الاختبار مباشرة للأستاذ
-            try:
-                res = supabase.table("quizzes").select("questions").eq("subject", current_subject).execute()
-                if res.data:
-                    quiz_data = parse_questions_data(res.data[0]['questions'])
-                    if quiz_data:
+            # قراءة وعرض المعاينة (Preview) فوراً للأستاذ
+            quiz_to_preview = st.session_state.get(f"preview_{current_subject}", None)
+            
+            if not quiz_to_preview:
+                try:
+                    res = supabase.table("quizzes").select("questions").eq("subject", current_subject).execute()
+                    if res.data:
+                        quiz_to_preview = parse_questions_data(res.data[0]['questions'])
+                except Exception:
+                    pass
+            
+            if quiz_to_preview:
+                st.write("---")
+                st.subheader(f"📋 معاينة (Preview) اختبار مادة ({current_subject}):")
+                for q in quiz_to_preview:
+                    if isinstance(q, dict):
+                        st.markdown(f"**س{q.get('id', '')}: {q.get('question', '')}**")
+                        for opt in q.get('options', []):
+                            st.write(f"- {opt}")
+                        st.markdown(f"✅ **الإجابة الصحيحة:** ({q.get('correct', '')})")
                         st.write("---")
-                        st.subheader(f"📋 معاينة الاختبار المعتمد حالياً لمادة ({current_subject}):")
-                        for q in quiz_data:
-                            if isinstance(q, dict):
-                                st.write(f"**س{q.get('id', '')}: {q.get('question', '')}**")
-                                for opt in q.get('options', []):
-                                    st.write(f"- {opt}")
-                                st.write(f"✅ **الإجابة الصحيحة:** ({q.get('correct', '')})")
-                                st.write("---")
-            except Exception as e:
-                pass
 
         with tab2:
             st.subheader(f"📊 نتائج إجابات الطلاب لمادة ({current_subject})")
@@ -209,7 +223,7 @@ elif role == "👨‍🎓 الطالب":
         user_answers = {}
         all_answered = True
         
-        if selected_quiz_data:
+        if selected_quiz_data and len(selected_quiz_data) > 0:
             for q in selected_quiz_data:
                 if isinstance(q, dict):
                     q_id = q.get('id', 1)
@@ -271,6 +285,6 @@ elif role == "👨‍🎓 الطالب":
                     st.balloons()
                     st.success(f"تم تسليم إجابة اختبار {selected_subject} بنجاح يا {student_name}! درجتك هي: {score} من {total}")
         else:
-            st.warning("عذراً، لا توجد أسئلة صالحة في هذا الاختبار بعد.")
+            st.warning("عذراً، لم يتم إنشاء أسئلة جديدة بعد لهذه المادة. يرجى الدخول كمعلم وتوليد اختبار جديد.")
     else:
         st.info("لا توجد أي اختبارات متاحة حالياً لأي مادة. يرجى الدخول من حساب الأستاذ وتوليد اختبار أولاً.")
