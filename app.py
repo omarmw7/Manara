@@ -6,7 +6,7 @@ from supabase import create_client, Client
 
 # مفاتيح الربط الإدارية المحدثة
 SUPABASE_URL = "https://yaedsonblycyqchkrgdk.supabase.co"
-SUPABASE_KEY = "sb_secret_KtcP6p0c7QRtqy_pUNWymw_aAQktjdV"
+SUPABASE_KEY = "sb_publishable_Q0iq5flGZxer4V6lrdar-w_5ya0PxwC"
 GROQ_API_KEY = "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"
 
 # إنشاء عميل Supabase و Groq
