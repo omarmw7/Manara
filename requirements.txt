@@ -6,3 +6,4 @@ pandas
 groq 
 pypdf
 pymupdf 
+openai
