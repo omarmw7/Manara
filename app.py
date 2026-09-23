@@ -2,29 +2,29 @@ import streamlit as st
 import pypdf
 import json
 from groq import Groq
+from supabase import create_client, Client
 
-# 1. مفتاح Groq الخاص بك
+# 1. مفاتيح الربط مباشرة (لضمان عمل التطبيق بدون مشاكل Secrets)
+SUPABASE_URL = "https://yaedsonblycyqchkrgdk.supabase.co"
+SUPABASE_KEY = "sb_publishable_Q0iq5flGZxer4V6lrdar-w_5ya0PxwC"
 GROQ_API_KEY = "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"
 
-# 2. حسابات الأساتذة والمواد المسندة لكل منهم
-TEACHERS_DB = {
-    "أ. عمر": {"password": "bio123", "subject": "الأحياء"},
-    "أ. أحمد": {"password": "math123", "subject": "الرياضيات"},
-    "أ. فتوح": {"password": "physics123", "subject": "الفيزياء"}
-}
+# إنشاء عميل Supabase و Groq
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+groq_client = Groq(api_key=GROQ_API_KEY)
 
-client = Groq(api_key=GROQ_API_KEY)
+# 2. حسابات الأساتذة والمواد المسندة
+TEACHERS_DB = {
+    "أ. عماد": {"password": "bio123", "subject": "الأحياء"},
+    "أ. أحمد": {"password": "math123", "subject": "الرياضيات"},
+    "أ. عمر": {"password": "physics123", "subject": "الفيزياء"}
+}
 
 st.set_page_config(page_title="منصة منارة التعليمية", layout="wide")
 st.title("🎓 نظام الاختبارات الذكي (منارة)")
 
 role = st.sidebar.radio("اختر الدور:", ["👨‍🏫 الأستاذ", "👨‍🎓 الطالب"])
 
-# تهيئة المتغيرات في الجلسة لتخزين الاختبارات والنتائج حسب المادة
-if 'quizzes' not in st.session_state:
-    st.session_state['quizzes'] = {}  # مثال: {"الأحياء": [...], "الرياضيات": [...]}
-if 'submissions' not in st.session_state:
-    st.session_state['submissions'] = []
 if 'logged_teacher' not in st.session_state:
     st.session_state['logged_teacher'] = None
 
@@ -34,7 +34,6 @@ if 'logged_teacher' not in st.session_state:
 if role == "👨‍🏫 الأستاذ":
     st.header("بوابة الأستاذ")
     
-    # 1. شاشة تسجيل الدخول للأستاذ
     if not st.session_state['logged_teacher']:
         st.subheader("🔒 تسجيل الدخول لأساتذة المواد")
         teacher_name = st.selectbox("اختر اسم الأستاذ:", list(TEACHERS_DB.keys()))
@@ -62,7 +61,7 @@ if role == "👨‍🏫 الأستاذ":
             uploaded_file = st.file_uploader("ارفع ملف الدرس (PDF)", type=["pdf"])
             
             if uploaded_file and st.button("توليد الاختبار"):
-                with st.spinner(f"جاري توليد اختبار مادة {current_subject}..."):
+                with st.spinner(f"جاري توليد 7 أسئلة لمادة {current_subject}..."):
                     try:
                         pdf_reader = pypdf.PdfReader(uploaded_file)
                         raw_text = ""
@@ -78,7 +77,7 @@ if role == "👨‍🏫 الأستاذ":
                                 cleaned_lines.append(line)
                         
                         clean_text = "\n".join(cleaned_lines)
-                        short_text = clean_text[:3500]
+                        short_text = clean_text[:5000]
                         
                         prompt = f"""
 أنت معلم متخصص في مادة ({current_subject}). أمامك نص دراسي مصفّى. 
@@ -99,7 +98,7 @@ if role == "👨‍🏫 الأستاذ":
 {short_text}
 """
 
-                        response = client.chat.completions.create(
+                        response = groq_client.chat.completions.create(
                             messages=[
                                 {"role": "system", "content": "أنت مساعد تعليمي يخرج البيانات بصيغة JSON حصرية."},
                                 {"role": "user", "content": prompt}
@@ -120,18 +119,24 @@ if role == "👨‍🏫 الأستاذ":
                         
                         quiz_json = json.loads(raw_response.strip())
                         
-                        # حفظ الاختبار تحت اسم المادة الخاصة بالأستاذ
-                        st.session_state['quizzes'][current_subject] = quiz_json
-                        st.success(f"تم توليد ونشر اختبار مادة {current_subject} بنجاح!")
+                        # حفظ الاختبار في قاعدة بيانات Supabase
+                        supabase.table("quizzes").upsert({
+                            "subject": current_subject,
+                            "questions": quiz_json
+                        }).execute()
+                        
+                        st.success(f"تم حفظ ونشر اختبار مادة {current_subject} (7 أسئلة) في قاعدة البيانات بنجاح!")
                         
                     except Exception as e:
                         st.error(f"حدث خطأ أثناء معالجة الاختبار: {e}")
 
-            # معاينة اختبار المادة الحالية إن وجد
-            if current_subject in st.session_state['quizzes']:
+            # قراءة ومعاينة الاختبار من قاعدة البيانات
+            res = supabase.table("quizzes").select("questions").eq("subject", current_subject).execute()
+            if res.data:
                 st.write("---")
-                st.subheader(f"📋 معاينة اختبار مادة {current_subject}:")
-                for q in st.session_state['quizzes'][current_subject]:
+                st.subheader(f"📋 معاينة اختبار مادة {current_subject} (من قاعدة البيانات):")
+                quiz_data = res.data[0]['questions']
+                for q in quiz_data:
                     st.write(f"**س{q['id']}: {q['question']}**")
                     for opt in q['options']:
                         st.write(f"- {opt}")
@@ -141,12 +146,12 @@ if role == "👨‍🏫 الأستاذ":
         with tab2:
             st.subheader(f"📊 نتائج إجابات الطلاب لمادة ({current_subject})")
             
-            # تصفية نتائج الطلاب الخاصة بمادة هذا الأستاذ فقط
-            subject_submissions = [s for s in st.session_state['submissions'] if s['subject'] == current_subject]
+            # جلب نتائج المادة الحالية من قاعدة البيانات
+            res_sub = supabase.table("submissions").select("*").eq("subject", current_subject).order("created_at", desc=True).execute()
             
-            if subject_submissions:
-                for sub in subject_submissions:
-                    st.write(f"👤 **اسم الطالب:** {sub['name']}")
+            if res_sub.data:
+                for sub in res_sub.data:
+                    st.write(f"👤 **اسم الطالب:** {sub['student_name']}")
                     st.write(f"💯 **الدرجة:** {sub['score']} من {sub['total']}")
                     st.write("**تفاصيل إجابات الطالب:**")
                     for detail in sub['details']:
@@ -161,10 +166,11 @@ if role == "👨‍🏫 الأستاذ":
 elif role == "👨‍🎓 الطالب":
     st.header("بوابة الطالب")
     
-    # اختيار المادة المراد الإجابة عنها
-    available_subjects = list(st.session_state['quizzes'].keys())
+    # جلب قائمة المواد المتاحة لها اختبارات من قاعدة البيانات
+    res_quizzes = supabase.table("quizzes").select("subject, questions").execute()
     
-    if available_subjects:
+    if res_quizzes.data:
+        available_subjects = [item['subject'] for item in res_quizzes.data]
         selected_subject = st.selectbox("📚 اختر المادة التي تريد تقديم اختبارها:", available_subjects)
         
         student_name = st.text_input("اسم الطالب الكامل:")
@@ -172,11 +178,13 @@ elif role == "👨‍🎓 الطالب":
         st.write("---")
         st.subheader(f"📝 اختبار مادة: {selected_subject}")
         
-        quiz_data = st.session_state['quizzes'][selected_subject]
+        # اختيار أسئلة المادة المحددة
+        selected_quiz_data = next(item['questions'] for item in res_quizzes.data if item['subject'] == selected_subject)
+        
         user_answers = {}
         all_answered = True
         
-        for q in quiz_data:
+        for q in selected_quiz_data:
             st.markdown(f"#### س{q['id']}: {q['question']}")
             
             chosen = st.radio(
@@ -206,7 +214,7 @@ elif role == "👨‍🎓 الطالب":
                 st.warning("يرجى الإجابة عن جميع الأسئلة قبل تسليم الحل.")
             else:
                 score = 0
-                total = len(quiz_data)
+                total = len(selected_quiz_data)
                 details = []
                 
                 for q_id, ans in user_answers.items():
@@ -220,14 +228,14 @@ elif role == "👨‍🎓 الطالب":
                         "correct_ans": ans['correct_char']
                     })
                 
-                # حفظ النتيجة مع تحديد اسم المادة
-                st.session_state['submissions'].append({
-                    "name": student_name,
+                # حفظ النتيجة في Supabase
+                supabase.table("submissions").insert({
+                    "student_name": student_name,
                     "subject": selected_subject,
                     "score": score,
                     "total": total,
                     "details": details
-                })
+                }).execute()
                 
                 st.balloons()
                 st.success(f"تم تسليم إجابة اختبار {selected_subject} بنجاح يا {student_name}! درجتك هي: {score} من {total}")
