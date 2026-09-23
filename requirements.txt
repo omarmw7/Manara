@@ -2,3 +2,5 @@ streamlit
 google-generativeai
 supabase
 pandas
+groq 
+pypdf
