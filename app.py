@@ -8,7 +8,7 @@ import json
 import random
 import string
 import pandas as pd
-
+import re
 # ========================================================
 # 🔑 مفاتيح الربط للخلطة الهجينة (GitHub + Groq + Supabase)
 # ========================================================
@@ -83,6 +83,27 @@ def convert_pdf_to_base64_images(pdf_bytes, max_pages=3):
 # ========================================================
 # 👑 توليد الاختبارات عبر GPT-4o-mini (GitHub Models)
 # ========================================================
+def clean_and_parse_json(text):
+    """تنظيف الرد من علامات الماركداون وفك الـ JSON بأمان"""
+    if not text:
+        raise ValueError("وصل رد فارغ من الموديل.")
+    
+    clean_text = text.strip()
+    # إزالة علامات ```json في البداية والنهاية إن وجدت
+    clean_text = re.sub(r"^```(?:json)?\s*", "", clean_text, flags=re.IGNORECASE)
+    clean_text = re.sub(r"\s*```$", "", clean_text)
+    clean_text = clean_text.strip()
+    
+    # محاولة فك الـ JSON مباشرة
+    try:
+        return json.loads(clean_text)
+    except Exception:
+        # إذا كان هناك نص إضافي، استخراج ما بين الأقواس { ... }
+        match = re.search(r"(\{.*\})", clean_text, re.DOTALL)
+        if match:
+            return json.loads(match.group(1))
+        raise ValueError(f"تعذر استخراج كائن JSON صالح من الرد: {clean_text[:100]}")
+
 def create_quiz_with_gpt4o(pdf_bytes, subject, title, num_q, diff, allow_tf, make_summary):
     # تحويل صفحات الـ PDF إلى صور لتقرأها عين GPT-4o-mini
     page_images = convert_pdf_to_base64_images(pdf_bytes, max_pages=3)
@@ -131,7 +152,7 @@ def create_quiz_with_gpt4o(pdf_bytes, subject, title, num_q, diff, allow_tf, mak
         temperature=0.2
     )
 
-    # قراءة النص بأمان مهما كان نوع الرد (كائن ChatCompletion أو نص مباشر)
+    # قراءة النص بأمان
     if hasattr(response, "choices"):
         raw_text = response.choices[0].message.content
     elif isinstance(response, str):
@@ -139,7 +160,8 @@ def create_quiz_with_gpt4o(pdf_bytes, subject, title, num_q, diff, allow_tf, mak
     else:
         raw_text = str(response)
 
-    return json.loads(raw_text)
+    # استخدام الدالة المنظفة لفك الـ JSON بنجاح
+    return clean_and_parse_json(raw_text)
 # ========================================================
 # ⚡ دوال الطلاب والتحليلات عبر Groq (سرعة + رصيد ضخم)
 # ========================================================
