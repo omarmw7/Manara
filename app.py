@@ -4,20 +4,20 @@ import json
 from groq import Groq
 from supabase import create_client, Client
 
-# 1. مفاتيح الربط مباشرة (لضمان عمل التطبيق بدون مشاكل Secrets)
+# مفاتيح الربط الإدارية المحدثة
 SUPABASE_URL = "https://yaedsonblycyqchkrgdk.supabase.co"
-SUPABASE_KEY = "sb_publishable_Q0iq5flGZxer4V6lrdar-w_5ya0PxwC"
+SUPABASE_KEY = "sb_secret_nyH0F5xB3T1zwZnyoIUhcA_oOV6RLq9"
 GROQ_API_KEY = "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"
 
 # إنشاء عميل Supabase و Groq
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 groq_client = Groq(api_key=GROQ_API_KEY)
 
-# 2. حسابات الأساتذة والمواد المسندة
+# حسابات الأساتذة والمواد المحدثة
 TEACHERS_DB = {
-    "أ. عماد": {"password": "bio123", "subject": "الأحياء"},
-    "أ. أحمد": {"password": "math123", "subject": "الرياضيات"},
-    "أ. عمر": {"password": "physics123", "subject": "الفيزياء"}
+    "أ. عمر": {"password": "bio123", "subject": "الأحياء"},
+    "أ. سيد": {"password": "math123", "subject": "الرياضيات"},
+    "أ. رجب": {"password": "islamic123", "subject": "التربية الإسلامية"}
 }
 
 st.set_page_config(page_title="منصة منارة التعليمية", layout="wide")
@@ -70,7 +70,7 @@ if role == "👨‍🏫 الأستاذ":
                         
                         lines = raw_text.split('\n')
                         cleaned_lines = []
-                        ignored_phrases = ["Imad Odeh", "عماد عودة", "الإجابة أسفل السؤال", "المدرس", "The answer is given"]
+                        ignored_phrases = ["الإجابة أسفل السؤال", "المدرس", "The answer is given"]
                         
                         for line in lines:
                             if not any(phrase in line for phrase in ignored_phrases):
@@ -123,41 +123,45 @@ if role == "👨‍🏫 الأستاذ":
                         supabase.table("quizzes").upsert({
                             "subject": current_subject,
                             "questions": quiz_json
-                        }).execute()
+                        }, on_conflict="subject").execute()
                         
                         st.success(f"تم حفظ ونشر اختبار مادة {current_subject} (7 أسئلة) في قاعدة البيانات بنجاح!")
                         
                     except Exception as e:
                         st.error(f"حدث خطأ أثناء معالجة الاختبار: {e}")
 
-            # قراءة ومعاينة الاختبار من قاعدة البيانات
-            res = supabase.table("quizzes").select("questions").eq("subject", current_subject).execute()
-            if res.data:
-                st.write("---")
-                st.subheader(f"📋 معاينة اختبار مادة {current_subject} (من قاعدة البيانات):")
-                quiz_data = res.data[0]['questions']
-                for q in quiz_data:
-                    st.write(f"**س{q['id']}: {q['question']}**")
-                    for opt in q['options']:
-                        st.write(f"- {opt}")
-                    st.write(f"✅ **الإجابة الصحيحة:** ({q['correct']})")
+            # قراءة ومعاينة الاختبار من قاعدة البيانات بأمان
+            try:
+                res = supabase.table("quizzes").select("questions").eq("subject", current_subject).execute()
+                if res.data:
                     st.write("---")
+                    st.subheader(f"📋 معاينة اختبار مادة {current_subject} (من قاعدة البيانات):")
+                    quiz_data = res.data[0]['questions']
+                    for q in quiz_data:
+                        st.write(f"**س{q['id']}: {q['question']}**")
+                        for opt in q['options']:
+                            st.write(f"- {opt}")
+                        st.write(f"✅ **الإجابة الصحيحة:** ({q['correct']})")
+                        st.write("---")
+            except Exception:
+                pass
 
         with tab2:
             st.subheader(f"📊 نتائج إجابات الطلاب لمادة ({current_subject})")
-            
-            # جلب نتائج المادة الحالية من قاعدة البيانات
-            res_sub = supabase.table("submissions").select("*").eq("subject", current_subject).order("created_at", desc=True).execute()
-            
-            if res_sub.data:
-                for sub in res_sub.data:
-                    st.write(f"👤 **اسم الطالب:** {sub['student_name']}")
-                    st.write(f"💯 **الدرجة:** {sub['score']} من {sub['total']}")
-                    st.write("**تفاصيل إجابات الطالب:**")
-                    for detail in sub['details']:
-                        st.write(f"- {detail['question']} | إجابة الطالب: ({detail['student_ans']}) | الإجابة الصحيحة: ({detail['correct_ans']})")
-                    st.write("---")
-            else:
+            try:
+                res_sub = supabase.table("submissions").select("*").eq("subject", current_subject).order("created_at", desc=True).execute()
+                
+                if res_sub.data:
+                    for sub in res_sub.data:
+                        st.write(f"👤 **اسم الطالب:** {sub['student_name']}")
+                        st.write(f"💯 **الدرجة:** {sub['score']} من {sub['total']}")
+                        st.write("**تفاصيل إجابات الطالب:**")
+                        for detail in sub['details']:
+                            st.write(f"- {detail['question']} | إجابة الطالب: ({detail['student_ans']}) | الإجابة الصحيحة: ({detail['correct_ans']})")
+                        st.write("---")
+                else:
+                    st.info(f"لا توجد إجابات مقدمة لمادة {current_subject} حتى الآن.")
+            except Exception:
                 st.info(f"لا توجد إجابات مقدمة لمادة {current_subject} حتى الآن.")
 
 # ---------------------------------------------------------
@@ -166,10 +170,12 @@ if role == "👨‍🏫 الأستاذ":
 elif role == "👨‍🎓 الطالب":
     st.header("بوابة الطالب")
     
-    # جلب قائمة المواد المتاحة لها اختبارات من قاعدة البيانات
-    res_quizzes = supabase.table("quizzes").select("subject, questions").execute()
-    
-    if res_quizzes.data:
+    try:
+        res_quizzes = supabase.table("quizzes").select("subject, questions").execute()
+    except Exception:
+        res_quizzes = None
+        
+    if res_quizzes and res_quizzes.data:
         available_subjects = [item['subject'] for item in res_quizzes.data]
         selected_subject = st.selectbox("📚 اختر المادة التي تريد تقديم اختبارها:", available_subjects)
         
@@ -178,7 +184,6 @@ elif role == "👨‍🎓 الطالب":
         st.write("---")
         st.subheader(f"📝 اختبار مادة: {selected_subject}")
         
-        # اختيار أسئلة المادة المحددة
         selected_quiz_data = next(item['questions'] for item in res_quizzes.data if item['subject'] == selected_subject)
         
         user_answers = {}
@@ -228,7 +233,6 @@ elif role == "👨‍🎓 الطالب":
                         "correct_ans": ans['correct_char']
                     })
                 
-                # حفظ النتيجة في Supabase
                 supabase.table("submissions").insert({
                     "student_name": student_name,
                     "subject": selected_subject,
@@ -240,4 +244,4 @@ elif role == "👨‍🎓 الطالب":
                 st.balloons()
                 st.success(f"تم تسليم إجابة اختبار {selected_subject} بنجاح يا {student_name}! درجتك هي: {score} من {total}")
     else:
-        st.info("لا توجد أي اختبارات متاحة حالياً لأي مادة. يرجى انتظار الأساتذة لتوليد الاختبارات.")
+        st.info("لا توجد أي اختبارات متاحة حالياً لأي مادة. يرجى الدخول من حساب الأستاذ وتوليد اختبار أولاً.")
