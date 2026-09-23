@@ -1,24 +1,39 @@
 import streamlit as st
-import pypdf
+import google.generativeai as genai
 import json
-import re
+import random
+import string
 import pandas as pd
-from datetime import datetime
-from groq import Groq
 from supabase import create_client, Client
 
-try:
-    SUPABASE_URL = st.secrets["SUPABASE_URL"]
-    SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
-except Exception as e:
-    st.error("يرجى إعداد مفاتيح Supabase (Secrets) في لوحة تحكم Streamlit Cloud أولاً.")
-    st.stop()
+# ==========================================
+# 🔑 المفاتيح والروابط المباشرة (للتجربة)
+# ==========================================
+SUPABASE_URL = "https://ccchpwhjkzbditeiixra.supabase.co"
+SUPABASE_KEY = "sb_secret_g2t3oBSdjmqe2tX835vTSw_32g3qpon"
+GEMINI_API_KEY = "AQ.Ab8RN6Kp696FTmr7JoZn7lJbw747xx1oLsY1dA_s7VdNm9MSgw"
 
-GROQ_API_KEY = "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"
-
+# --- تهيئة الاتصال بقاعدة البيانات والذكاء الاصطناعي ---
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-groq_client = Groq(api_key=GROQ_API_KEY)
+genai.configure(api_key=GEMINI_API_KEY)
 
+# --- ضبط الصفحة وتنسيق الاتجاه (RTL) ---
+st.set_page_config(
+    page_title="منصة منارة التعليمية",
+    page_icon="🎓",
+    layout="wide"
+)
+
+st.markdown("""
+<style>
+    .stApp { direction: rtl; text-align: right; }
+    p, div, span, h1, h2, h3, h4, label { text-align: right !important; }
+    .stRadio label { direction: rtl !important; text-align: right !important; }
+    div[data-testid="stExpander"] { direction: rtl; text-align: right; }
+</style>
+""", unsafe_allow_html=True)
+
+# بيانات المعلمين
 TEACHERS_DB = {
     "أ. عمر": {"password": "bio123", "subject": "الأحياء"},
     "أ. سيد": {"password": "math123", "subject": "الرياضيات"},
@@ -26,402 +41,381 @@ TEACHERS_DB = {
     "أ. محمد": {"password": "chm123", "subject": "الكيمياء"}
 }
 
-st.set_page_config(page_title="منصة منارة التعليمية", layout="wide")
+def generate_quiz_code(subject):
+    code_chars = ''.join(random.choices(string.digits, k=4))
+    prefix = subject[:3].strip()
+    return f"{prefix}-{code_chars}"
 
-st.markdown("""
-    <style>
-    .stApp {
-        direction: rtl;
-        text-align: right;
-    }
-    p, div, span, h1, h2, h3, h4, label {
-        text-align: right !important;
-        unicode-bidi: plaintext !important;
-    }
-    .stRadio label {
-        direction: rtl !important;
-        text-align: right !important;
-    }
-    </style>
-""", unsafe_allow_html=True)
+# --- دوال الذكاء الاصطناعي (Gemini 1.5 Flash) ---
+def create_quiz_with_gemini(pdf_bytes, subject, title, num_q, diff, allow_tf, make_summary):
+    model = genai.GenerativeModel(
+        model_name="gemini-1.5-flash",
+        generation_config={
+            "response_mime_type": "application/json",
+            "temperature": 0.2
+        }
+    )
 
-st.title("🎓 نظام الاختبارات الذكي (منارة)")
+    types_prompt = "جميع الأسئلة اختيار من متعدد بأربعة خيارات."
+    if allow_tf:
+        types_prompt = "قم بتنويع الأسئلة بين: اختيار من متعدد (4 خيارات)، وأسئلة صح أو خطأ (يكون الخياران فقط: 1) صح، 2) خطأ)."
 
-role = st.sidebar.radio("اختر الدور:", ["👨‍🏫 الأستاذ", "👨‍🎓 الطالب"])
+    prompt = f"""
+    أنت موجه تربوي وخبير في مادة ({subject}).
+    قم بتحليل ملف الـ PDF المرفق لدرس: ({title}).
 
-if 'logged_teacher' not in st.session_state:
-    st.session_state['logged_teacher'] = None
+    المطلوب:
+    1. استخرج بالضبط {num_q} أسئلة بمستوى صعوبة: ({diff}).
+    2. نمط الأسئلة: {types_prompt}.
+    3. إذا كان make_summary = {make_summary}، اكتب ملخصاً شاملاً من 3-5 نقاط جوهرية للدرس في حقل summary، وإلا اجعله فارغاً.
 
-def parse_questions_data(raw_data):
-    if not raw_data:
-        return []
-    if isinstance(raw_data, str):
-        try:
-            parsed = json.loads(raw_data)
-            return parse_questions_data(parsed)
-        except Exception:
-            clean_text = re.sub(r'```(?:json)?', '', raw_data, flags=re.IGNORECASE).strip()
-            clean_text = clean_text.replace('```', '').strip()
-            try:
-                return json.loads(clean_text)
-            except Exception:
-                match = re.search(r'\[\s*\{.*\}\s*\]', raw_data, re.DOTALL)
-                if match:
-                    try:
-                        return json.loads(match.group(0))
-                    except Exception:
-                        pass
-                return []
-    elif isinstance(raw_data, list):
-        clean_list = []
-        for item in raw_data:
-            if isinstance(item, str):
-                try:
-                    clean_list.append(json.loads(item))
-                except Exception:
-                    pass
-            elif isinstance(item, dict):
-                clean_list.append(item)
-        return clean_list
-    return []
+    أرجع النتيجة حصراً بصيغة كائن JSON بالهيكل الدقيق التالي:
+    {{
+      "summary": "ملخص الدرس هنا إن وجد...",
+      "questions": [
+        {{
+          "id": 1,
+          "question": "نص السؤال الدقيق من الدرس؟",
+          "options": ["خيار 1", "خيار 2", "خيار 3", "خيار 4"],
+          "correct_index": 0,
+          "explanation": "شرح علمي مبسط لسبب صحة هذا الخيار مستنداً للدرس"
+        }}
+      ]
+    }}
+    ملاحظة هامة: correct_index هو فهرس الإجابة الصحيحة ويبدأ دائماً من الرقم 0.
+    """
 
-if role == "👨‍🏫 الأستاذ":
-    st.header("بوابة الأستاذ")
-    
+    res = model.generate_content([
+        {"mime_type": "application/pdf", "data": pdf_bytes},
+        prompt
+    ])
+    return json.loads(res.text)
+
+def analyze_class_submissions(subject, submissions_data):
+    model = genai.GenerativeModel("gemini-1.5-flash")
+    prompt = f"""
+    أنت مستشار تربوي. إليك بيانات أداء الطلاب في مادة ({subject}):
+    {json.dumps(submissions_data, ensure_ascii=False)}
+
+    المطلوب:
+    قدم تقريراً مختصراً وواضحاً للأستاذ يوضح:
+    1. المفاهيم التي وجد معظم الطلاب صعوبة فيها وتكررت أخطاؤهم بها.
+    2. نصائح وتوصيات محددة لإعادة شرحها وتغطيتها في الحصة القادمة.
+    """
+    res = model.generate_content(prompt)
+    return res.text
+
+def ask_ai_tutor(question, student_ans, correct_ans, explanation):
+    model = genai.GenerativeModel("gemini-1.5-flash")
+    prompt = f"""
+    أنت معلم خصوصي ودود ومشجع. الطالب أخطأ في هذا السؤال:
+    - السؤال: {question}
+    - إجابة الطالب: {student_ans}
+    - الإجابة الصحيحة: {correct_ans}
+    - السبب: {explanation}
+
+    اشرح للطالب بأسلوب مبسط جداً وداعم لماذا إجابته كانت غير دقيقة، وكيف يفهم الإجابة الصحيحة بسهولة.
+    """
+    res = model.generate_content(prompt)
+    return res.text
+
+# --- واجهة التطبيق الرئيسية ---
+st.title("🎓 منصة منارة الذكية للتقييم والتعليم")
+role = st.sidebar.radio("اختر البوابة:", ["👨‍🏫 بوابة المعلم", "👨‍🎓 بوابة الطالب"])
+
+# =======================================================
+# 1. بوابة المعلم
+# =======================================================
+if role == "👨‍🏫 بوابة المعلم":
+    if 'logged_teacher' not in st.session_state:
+        st.session_state['logged_teacher'] = None
+
     if not st.session_state['logged_teacher']:
         st.subheader("🔒 تسجيل الدخول لأساتذة المواد")
-        teacher_name = st.selectbox("اختر اسم الأستاذ:", list(TEACHERS_DB.keys()))
-        password_input = st.text_input("أدخل كلمة المرور:", type="password")
-        
-        if st.button("تسجيل الدخول"):
-            if password_input == TEACHERS_DB[teacher_name]["password"]:
-                st.session_state['logged_teacher'] = teacher_name
-                st.success(f"أهلاً بك {teacher_name}! تم تسجيل الدخول لـ ({TEACHERS_DB[teacher_name]['subject']})")
+        c1, c2 = st.columns(2)
+        with c1:
+            t_user = st.selectbox("اسم المعلم:", list(TEACHERS_DB.keys()))
+        with c2:  t_pwd = st.text_input("كلمة المرور:", type="password")
+
+        if st.button("تسجيل الدخول", type="primary"):
+            if t_pwd == TEACHERS_DB[t_user]["password"]:
+                st.session_state['logged_teacher'] = t_user
                 st.rerun()
             else:
-                st.error("كلمة المرور غير صحيحة!")
+                st.error("كلمة المرور غير صحيحة.")
     else:
-        current_teacher = st.session_state['logged_teacher']
-        current_subject = TEACHERS_DB[current_teacher]["subject"]
-        
-        st.sidebar.info(f"👨‍🏫 **المعلم الحالي:** {current_teacher}\n\n📚 **المادة:** {current_subject}")
-        if st.sidebar.button("🔒 تسجيل الخروج"):
+        teacher = st.session_state['logged_teacher']
+        subject = TEACHERS_DB[teacher]["subject"]
+
+        st.sidebar.success(f"👨‍🏫 **المعلم:** {teacher}\n\n📚 **المادة:** {subject}")
+        if st.sidebar.button("🚪 تسجيل الخروج"):
             st.session_state['logged_teacher'] = None
             st.rerun()
-            
-        tab1, tab2, tab3, tab4 = st.tabs([
-            f"أنشئ اختبار بالذكاء الاصطناعي", 
-            "إضافة أسئلة يدوياً / تحرير", 
-            "سجل الأنشطة والاختبارات (History)", 
-            "نتائج الطلاب وتصدير Excel"
+
+        tab1, tab2, tab3 = st.tabs([
+            "✨ إنشاء اختبار جديد (AI)", 
+            "📚 بنك الاختبارات المتاحة", 
+            "📊 نتائج الطلاب والتشخيص الذكي"
         ])
-        
+
         with tab1:
-            st.subheader(f"🤖 توليد اختبار لمادة ({current_subject})")
-            uploaded_file = st.file_uploader("ارفع ملف الدرس (PDF)", type=["pdf"])
-            num_questions = st.number_input("اختر عدد الأسئلة المطلوبة:", min_value=1, max_value=20, value=5)
-            
-            if uploaded_file and st.button("توليد الاختبار"):
-                with st.spinner(f"جاري توليد {num_questions} أسئلة لمادة {current_subject}..."):
+            st.subheader("🤖 توليد اختبار ذكي جديد من الـ PDF")
+            c_title, c_num, c_diff = st.columns([2, 1, 1])
+            with c_title:
+                quiz_title = st.text_input("عنوان الدرس / الاختبار:", placeholder="مثال: علم الوراثة والجينات")
+            with c_num:
+                num_q = st.number_input("عدد الأسئلة:", 1, 25, 5)
+            with c_diff:
+                diff = st.selectbox("مستوى الصعوبة:", ["سهل", "متوسط", "متقدم"])
+
+            st.markdown("#### ⚙️ خيارات ومزايا الاختبار (اختيارية):")
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                enable_shuffle = st.checkbox("🔀 عشوائية الأسئلة والخيارات", value=True, help="ترتيب مختلف لكل طالب لمنع الغش")
+            with col2:
+                enable_timer = st.checkbox("⏱️ تحديد وقت زمني", value=False)
+            with col3:
+                allow_tf = st.checkbox("⚖️ تضمين صح وخطأ", value=False)
+            with col4:
+                enable_summary = st.checkbox("📝 توليد ملخص تمهيدي", value=True, help="ملخص يقرأه الطالب قبل بدء الحل")
+
+            timer_val = None
+            if enable_timer:
+                timer_val = st.number_input("مدة الاختبار بالدقائق:", 1, 120, 10)
+
+            pdf_file = st.file_uploader("ارفع ملف الدرس بصيغة (PDF):", type=["pdf"])
+
+            if pdf_file and quiz_title and st.button("🚀 توليد الاختبار ونشره", type="primary"):
+                with st.spinner("يقوم Gemini 1.5 Flash الآن باستيعاب الدرس وهندسة الأسئلة والشروحات..."):
                     try:
-                        pdf_reader = pypdf.PdfReader(uploaded_file)
-                        raw_text = ""
-                        for page in pdf_reader.pages:
-                            raw_text += (page.extract_text() or "") + "\n"
-                        
-                        lines = raw_text.split('\n')
-                        cleaned_lines = [l for l in lines if not any(p in l for p in ["الإجابة أسفل السؤال", "المدرس", "The answer is given"])]
-                        clean_text = "\n".join(cleaned_lines)[:5000]
-                        
-                        prompt = f"""
-أنت معلم متخصص في مادة ({current_subject}). أمامك نص دراسي مصفّى. 
-اصنع منه بالضبط {num_questions} أسئلة اختيار من متعدد دقيقة.
-
-تنسيق الخيارات المعتمد: "1) الخيار", "2) الخيار", "3) الخيار", "4) الخيار".
-أرجع فقط قائمة JSON حصرية بنفس الشكل التالي تماماً:
-[
-  {{
-    "id": 1,
-    "question": "نص السؤال الأول",
-    "options": ["1) الخيار الأول", "2) الخيار الثاني", "3) الخيار الثالث", "4) الخيار الرابع"],
-    "correct": "1"
-  }}
-]
-
-نص الدرس:
-{clean_text}
-"""
-                        response = groq_client.chat.completions.create(
-                            messages=[
-                                {"role": "system", "content": "أنت مساعد تعليمي تخرج النتائج بصيغة JSON فقط."},
-                                {"role": "user", "content": prompt}
-                            ],
-                            model="qwen/qwen3.8-27b",
-                            temperature=0.1
+                        ai_data = create_quiz_with_gemini(
+                            pdf_file.getvalue(), subject, quiz_title, num_q, diff, allow_tf, enable_summary
                         )
-                        
-                        raw_response = response.choices[0].message.content.strip()
-                        quiz_json = parse_questions_data(raw_response)
+                        quiz_code = generate_quiz_code(subject)
 
-                        if quiz_json:
-                            supabase.table("quizzes").upsert({
-                                "subject": current_subject,
-                                "questions": quiz_json
-                            }, on_conflict="subject").execute()
-                            
-                            st.session_state[f"editing_quiz_{current_subject}"] = quiz_json
-                            st.success(f"تم حفظ ونشر اختبار مادة {current_subject} ({len(quiz_json)} أسئلة) بنجاح!")
-                        else:
-                            st.error("فشل في صياغة الأسئلة، يرجى المحاولة مرة أخرى.")
+                        supabase.table("quizzes").insert({
+                            "quiz_code": quiz_code,
+                            "teacher_name": teacher,
+                            "subject": subject,
+                            "lesson_title": quiz_title,
+                            "difficulty": diff,
+                            "timer_minutes": timer_val if enable_timer else None,
+                            "shuffle_enabled": enable_shuffle,
+                            "summary": ai_data.get("summary") if enable_summary else None,
+                            "questions": ai_data.get("questions", [])
+                        }).execute()
+
+                        st.success(f"🎉 تم نشر الاختبار بنجاح! كود الاختبار للطلاب هو: **{quiz_code}**")
                     except Exception as e:
-                        st.error(f"حدث خطأ أثناء معالجة الاختبار: {e}")
+                        st.error(f"حدث خطأ أثناء المعالجة: {e}")
 
         with tab2:
-            st.subheader(f"🛠️ تحرير وإضافة الأسئلة لمادة ({current_subject})")
-            
-            if f"editing_quiz_{current_subject}" not in st.session_state:
-                try:
-                    res = supabase.table("quizzes").select("questions").eq("subject", current_subject).execute()
-                    if res.data and len(res.data) > 0:
-                        st.session_state[f"editing_quiz_{current_subject}"] = parse_questions_data(res.data[0]['questions'])
-                    else:
-                        st.session_state[f"editing_quiz_{current_subject}"] = []
-                except Exception:
-                    st.session_state[f"editing_quiz_{current_subject}"] = []
+            st.subheader(f"📚 سجل اختبارات مادة ({subject})")
+            q_res = supabase.table("quizzes").select("*").eq("subject", subject).order("created_at", desc=True).execute()
 
-            current_questions = st.session_state[f"editing_quiz_{current_subject}"]
+            if q_res.data:
+                for qz in q_res.data:
+                    with st.expander(f"🔑 كود: [{qz.get('quiz_code')}] - {qz['lesson_title']} ({len(qz['questions'])} أسئلة)"):
+                        st.write(f"⏱️ **المؤقت:** {qz.get('timer_minutes')} دقيقة" if qz.get('timer_minutes') else "⏱️ **المؤقت:** مفتوح")
+                        st.write(f"🔀 **عشوائية الأسئلة:** {'مفعلة' if qz.get('shuffle_enabled') else 'معطلة'}")
+                        if qz.get("summary"):
+                            st.info(f"💡 **الملخص المرفق للدرس:**\n{qz.get('summary')}")
 
-            if current_questions:
-                st.markdown("### ✏️ الأسئلة الحالية (يمكنك تعديلها وتحديثها):")
-                updated_questions = []
-                for idx, q in enumerate(current_questions):
-                    with st.expander(f"السؤال {idx + 1}: {q.get('question', '')}"):
-                        q_text = st.text_input(f"نص السؤال {idx + 1}:", value=q.get('question', ''), key=f"q_text_{idx}")
-                        opts = q.get('options', ["1) ", "2) ", "3) ", "4) "])
-                        
-                        opt1 = st.text_input(f"الخيار 1:", value=opts[0] if len(opts)>0 else "1) ", key=f"opt1_{idx}")
-                        opt2 = st.text_input(f"الخيار 2:", value=opts[1] if len(opts)>1 else "2) ", key=f"opt2_{idx}")
-                        opt3 = st.text_input(f"الخيار 3:", value=opts[2] if len(opts)>2 else "3) ", key=f"opt3_{idx}")
-                        opt4 = st.text_input(f"الخيار 4:", value=opts[3] if len(opts)>3 else "4) ", key=f"opt4_{idx}")
-                        
-                        raw_correct = str(q.get('correct', '1')).strip()
-                        default_idx = ["1", "2", "3", "4"].index(raw_correct) if raw_correct in ["1", "2", "3", "4"] else 0
-                        
-                        correct_ans = st.selectbox(
-                            f"الإجابة الصحيحة للسؤال {idx + 1}:", 
-                            ["1", "2", "3", "4"], 
-                            index=default_idx,
-                            key=f"corr_{idx}"
-                        )
-                        
-                        updated_questions.append({
-                            "id": idx + 1,
-                            "question": q_text,
-                            "options": [opt1, opt2, opt3, opt4],
-                            "correct": correct_ans
-                        })
-                
-                if st.button("💾 حفظ والتحديث النهائي للأسئلة"):
-                    st.session_state[f"editing_quiz_{current_subject}"] = updated_questions
-                    supabase.table("quizzes").upsert({
-                        "subject": current_subject,
-                        "questions": updated_questions
-                    }, on_conflict="subject").execute()
-                    st.success("تم تحديث الاختبار بنجاح!")
-                    st.rerun()
+                        st.markdown("---")
+                        for idx, q in enumerate(qz["questions"]):
+                            st.markdown(f"**س{idx+1}: {q['question']}**")
+                            for o_idx, opt in enumerate(q['options']):
+                                correct_mark = "✅ " if o_idx == q.get('correct_index') else ""
+                                st.write(f"- {correct_mark}{opt}")
+                            st.caption(f"تفسير الإجابة: {q.get('explanation')}")
 
-            st.write("---")
-            st.markdown("### ➕ إضافة سؤال يدوي جديد:")
-            with st.form("add_manual_question"):
-                new_q_text = st.text_input("السؤال الجديد:")
-                new_opt1 = st.text_input("الخيار 1:", value="1) ")
-                new_opt2 = st.text_input("الخيار 2:", value="2) ")
-                new_opt3 = st.text_input("الخيار 3:", value="3) ")
-                new_opt4 = st.text_input("الخيار 4:", value="4) ")
-                new_correct = st.selectbox("رقم الإجابة الصحيحة:", ["1", "2", "3", "4"])
-                
-                submit_new = st.form_submit_button("إضافة السؤال للاختبار")
-                
-                if submit_new and new_q_text:
-                    new_q_obj = {
-                        "id": len(current_questions) + 1,
-                        "question": new_q_text,
-                        "options": [new_opt1, new_opt2, new_opt3, new_opt4],
-                        "correct": new_correct
-                    }
-                    current_questions.append(new_q_obj)
-                    st.session_state[f"editing_quiz_{current_subject}"] = current_questions
-                    
-                    supabase.table("quizzes").upsert({
-                        "subject": current_subject,
-                        "questions": current_questions
-                    }, on_conflict="subject").execute()
-                    st.success("تم إضافة السؤال الجديد وحفظ الاختبار بنجاح!")
-                    st.rerun()
+                        if st.button("🗑️ حذف هذا الاختبار", key=f"del_btn_{qz['id']}"):
+                            supabase.table("quizzes").delete().eq("id", qz['id']).execute()
+                            st.rerun()
+            else:
+                st.info("لا توجد اختبارات منشورة حتى الآن.")
 
         with tab3:
-            st.subheader(f"📜 سجل الاختبارات المتاحة لمادة ({current_subject})")
-            try:
-                res_hist = supabase.table("quizzes").select("*").eq("subject", current_subject).execute()
-                if res_hist.data:
-                    for item in res_hist.data:
-                        st.write(f"📌 **المادة:** {item['subject']}")
-                        questions_list = parse_questions_data(item['questions'])
-                        st.write(f"🔢 **عدد الأسئلة الحالي:** {len(questions_list)}")
-                        with st.expander("عرض تفاصيل الاختبار الحالي"):
-                            for q in questions_list:
-                                if isinstance(q, dict):
-                                    st.markdown(f"**س{q.get('id', '')}: {q.get('question', '')}**")
-                                    for opt in q.get('options', []):
-                                        st.write(f"- {opt}")
-                                    st.write(f"✅ الإجابة الصحيحة: ({q.get('correct', '')})")
-                                    st.write("---")
-                else:
-                    st.info("لا يوجد سجل اختبارات سابق لهذه المادة.")
-            except Exception as e:
-                st.error(f"خطأ في قراءة السجل: {e}")
+            st.subheader(f"📊 نتائج وتقارير مادة ({subject})")
+            sub_res = supabase.table("submissions").select("*").eq("subject", subject).order("created_at", desc=True).execute()
 
-        with tab4:
-            st.subheader(f"📊 نتائج إجابات الطلاب التاريخية لمادة ({current_subject})")
-            try:
-                res_sub = supabase.table("submissions").select("*").eq("subject", current_subject).order("created_at", desc=True).execute()
-                if res_sub.data and len(res_sub.data) > 0:
-                    
-                    export_data = []
-                    for sub in res_sub.data:
-                        date_str = sub.get('created_at', '')
-                        if date_str:
-                            try:
-                                date_str = datetime.fromisoformat(date_str.replace('Z', '+00:00')).strftime("%Y-%m-%d %H:%M")
-                            except Exception:
-                                pass
-                                
-                        export_data.append({
-                            "تاريخ التقديم": date_str,
-                            "اسم الطالب": sub.get('student_name', ''),
-                            "الدرجة": sub.get('score', 0),
-                            "المجموع الكلي": sub.get('total', 0),
-                            "النسبة المئوية": f"{(sub.get('score', 0) / sub.get('total', 1)) * 100:.1f}%"
-                        })
-                    
-                    df = pd.DataFrame(export_data)
-                    
-                    csv_bytes = df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
-                    st.download_button(
-                        label="📥 تحميل النتائج كملف Excel / CSV",
-                        data=csv_bytes,
-                        file_name=f"نتائج_{current_subject}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                        mime="text/csv"
-                    )
-                    
-                    st.write("---")
-                    st.markdown("### 📋 سجل المحاولات التفصيلي (محفوظ دائماً):")
-                    
-                    for sub in res_sub.data:
-                        date_str = sub.get('created_at', '')
-                        if date_str:
-                            try:
-                                date_str = datetime.fromisoformat(date_str.replace('Z', '+00:00')).strftime("%Y-%m-%d %H:%M")
-                            except Exception:
-                                pass
+            if sub_res.data:
+                df = pd.DataFrame(sub_res.data)
+                col1, col2, col3 = st.columns(3)
+                col1.metric("إجمالي المحاولات", len(df))
+                col2.metric("متوسط الدرجات", f"{df['score'].mean():.1f} / {df['total'].iloc[0] if len(df) else 0}")
+                col3.metric("نسبة النجاح", f"{(len(df[df['score'] >= df['total']/2]) / len(df)) * 100:.1f}%")
 
-                        st.write(f"👤 **اسم الطالب:** {sub['student_name']} | 🕒 **تاريخ التقديم:** {date_str}")
-                        st.write(f"💯 **الدرجة:** {sub['score']} من {sub['total']}")
-                        
-                        with st.expander("عرض التفاصيل"):
-                            for detail in sub.get('details', []):
-                                st.write(f"- {detail.get('question', '')} | إجابة الطالب: ({detail.get('student_ans', '')}) | الإجابة الصحيحة: ({detail.get('correct_ans', '')})")
-                        st.write("---")
-                else:
-                    st.info(f"لا توجد إجابات مقدمة لمادة {current_subject} حتى الآن.")
-            except Exception as e:
-                st.error(f"حدث خطأ أثناء تحميل النتائج: {e}")
+                st.divider()
 
-elif role == "👨‍🎓 الطالب":
-    st.header("بوابة الطالب")
-    
-    try:
-        res_quizzes = supabase.table("quizzes").select("subject, questions").execute()
-    except Exception:
-        res_quizzes = None
-        
-    if res_quizzes and res_quizzes.data:
-        available_subjects = [item['subject'] for item in res_quizzes.data]
-        selected_subject = st.selectbox("📚 اختر المادة التي تريد تقديم اختبارها:", available_subjects)
-        
-        student_name = st.text_input("اسم الطالب الكامل:")
-        
-        st.write("---")
-        st.subheader(f"📝 اختبار مادة: {selected_subject}")
-        
-        raw_selected = next(item['questions'] for item in res_quizzes.data if item['subject'] == selected_subject)
-        selected_quiz_data = parse_questions_data(raw_selected)
-        
-        user_answers = {}
-        all_answered = True
-        
-        if selected_quiz_data and len(selected_quiz_data) > 0:
-            for q in selected_quiz_data:
-                if isinstance(q, dict):
-                    q_id = q.get('id', 1)
-                    q_text = q.get('question', '')
-                    q_options = q.get('options', [])
-                    q_correct = str(q.get('correct', ''))
-                    
-                    st.markdown(f"#### س{q_id}: {q_text}")
-                    
-                    chosen = st.radio(
-                        "اختر الإجابة:", 
-                        q_options, 
-                        index=None,
-                        key=f"q_{selected_subject}_{q_id}"
-                    )
-                    
-                    if chosen is None:
-                        all_answered = False
-                        chosen_char = None
-                    else:
-                        chosen_char = chosen.split(")")[0].strip() if ")" in chosen else chosen[0]
-                    
-                    user_answers[q_id] = {
-                        "chosen_char": chosen_char,
-                        "question": q_text,
-                        "correct_char": q_correct
-                    }
-                    st.write("")
-            
-            if st.button("تسليم الحل"):
-                if not student_name:
-                    st.warning("يرجى كتابة اسمك الكامل قبل إرسال الحل.")
-                elif not all_answered:
-                    st.warning("يرجى الإجابة عن جميع الأسئلة قبل تسليم الحل.")
-                else:
-                    score = 0
-                    total = len(selected_quiz_data)
-                    details = []
-                    
-                    for q_id, ans in user_answers.items():
-                        is_correct = (ans['chosen_char'] == ans['correct_char'])
-                        if is_correct:
-                            score += 1
-                        
-                        details.append({
-                            "question": ans['question'],
-                            "student_ans": ans['chosen_char'],
-                            "correct_ans": ans['correct_char']
-                        })
-                    
-                    supabase.table("submissions").insert({
-                        "student_name": student_name,
-                        "subject": selected_subject,
-                        "score": score,
-                        "total": total,
-                        "details": details
-                    }).execute()
-                    
-                    st.balloons()
-                    st.success(f"تم تسليم إجابة اختبار {selected_subject} بنجاح يا {student_name}! درجتك هي: {score} من {total}")
-        else:
-            st.warning("عذراً، لم يتم إنشاء أسئلة جديدة بعد لهذه المادة. يرجى الدخول كمعلم وتوليد اختبار جديد.")
+                if st.button("🤖 تشخيص نقاط ضعف الطلاب عبر الذكاء الاصطناعي", type="primary"):
+                    with st.spinner("جاري قراءة وتحليل كافة إجابات الطلاب واستخراج نقاط الضعف..."):
+                        report = analyze_class_submissions(subject, sub_res.data[:30])
+                        st.markdown("### 📋 التقرير التشخيصي الذكي:")
+                        st.success(report)
+
+                st.write("---")
+                export_df = df[['student_name', 'score', 'total', 'created_at']].copy()
+                export_df.columns = ['اسم الطالب', 'الدرجة', 'المجموع', 'التاريخ']
+                csv = export_df.to_csv(index=False).encode('utf-8-sig')
+                st.download_button("📥 تحميل النتائج كملف Excel (CSV)", csv, f"نتائج_{subject}.csv", "text/csv")
+
+                st.dataframe(export_df, use_container_width=True)
+            else:
+                st.info("لا توجد أي تسليمات مسجلة من الطلاب حتى الآن.")
+
+# =======================================================
+# 2. بوابة الطالب
+# =======================================================
+elif role == "👨‍🎓 بوابة الطالب":
+    st.header("بوابة الاختبارات التفاعلية للطلاب")
+
+    access_type = st.radio("طريقة الانضمام للاختبار:", ["🔑 إدخال كود الاختبار (Quiz Code)", "📚 اختيار من قائمة المواد"], horizontal=True)
+    target_quiz = None
+
+    if access_type == "🔑 إدخال كود الاختبار (Quiz Code)":
+        entered_code = st.text_input("أدخل كود الاختبار (مثال: BIO-1234):").strip()
+        if entered_code:
+            res_code = supabase.table("quizzes").select("*").eq("quiz_code", entered_code).execute()
+            if res_code.data:
+                target_quiz = res_code.data[0]
+            else:
+                st.error("الكود غير صحيح أو أن الاختبار غير متاح.")
     else:
-        st.info("لا توجد أي اختبارات متاحة حالياً لأي مادة. يرجى الدخول من حساب الأستاذ وتوليد اختبار أولاً.")
+        subject_names = list(set([v["subject"] for v in TEACHERS_DB.values()]))
+        chosen_subj = st.selectbox("اختر المادة الدراسية:", subject_names)
+        quizzes_avail = supabase.table("quizzes").select("*").eq("subject", chosen_subj).execute()
+
+        if quizzes_avail.data:
+            quiz_options = {f"{item['lesson_title']} (كود: {item.get('quiz_code')})": item for item in quizzes_avail.data}
+            selected_title = st.selectbox("اختر الدرس المطلوب:", list(quiz_options.keys()))
+            target_quiz = quiz_options[selected_title]
+        else:
+            st.warning("لا توجد اختبارات منشورة لهذه المادة حالياً.")
+
+    if target_quiz:
+        st.divider()
+        st.markdown(f"### 📝 اختبار: {target_quiz['lesson_title']} ({target_quiz['subject']})")
+
+        if target_quiz.get("summary"):
+            with st.expander("📖 ملخص سريع لأهم نقاط الدرس قبل البدء", expanded=True):
+                st.write(target_quiz.get("summary"))
+
+        if target_quiz.get("timer_minutes"):
+            st.warning(f"⏱️ مدة الاختبار: {target_quiz['timer_minutes']} دقيقة.")
+
+        student_name = st.text_input("أدخل اسمك الكامل للبدء:")
+
+        if student_name.strip():
+            session_quiz_key = f"quiz_data_{target_quiz['id']}"
+            if session_quiz_key not in st.session_state:
+                raw_qs = target_quiz["questions"]
+                prepared_qs = []
+                for q in raw_qs:
+                    opts = list(enumerate(q["options"]))
+                    if target_quiz.get("shuffle_enabled"):
+                        random.shuffle(opts)
+                    prepared_qs.append({
+                        "question": q["question"],
+                        "options": opts,
+                        "correct_idx": q["correct_index"],
+                        "explanation": q.get("explanation", "")
+                    })
+                if target_quiz.get("shuffle_enabled"):
+                    random.shuffle(prepared_qs)
+                st.session_state[session_quiz_key] = prepared_qs
+
+            active_quiz = st.session_state[session_quiz_key]
+            result_state_key = f"result_{target_quiz['id']}_{student_name.strip()}"
+
+            if result_state_key not in st.session_state:
+                user_choices = {}
+                with st.form("exam_form"):
+                    for idx, q in enumerate(active_quiz):
+                        st.markdown(f"**س{idx+1}: {q['question']}**")
+                        opts_text = [o[1] for o in q["options"]]
+                        user_choices[idx] = st.radio(
+                            "اختر الإجابة:",
+                            options=list(range(len(opts_text))),
+                            format_func=lambda x, texts=opts_text: texts[x],
+                            key=f"field_{target_quiz['id']}_{idx}",
+                            index=None
+                        )
+                        st.write("")
+
+                    finish_btn = st.form_submit_button("📩 إنهاء وتسليم الإجابات", type="primary")
+
+                if finish_btn:
+                    if any(c is None for c in user_choices.values()):
+                        st.error("يرجى الإجابة عن جميع الأسئلة قبل تسليم الاختبار.")
+                    else:
+                        score = 0
+                        total = len(active_quiz)
+                        report_details = []
+
+                        for idx, q in enumerate(active_quiz):
+                            selected_pos = user_choices[idx]
+                            orig_idx = q["options"][selected_pos][0]
+                            selected_str = q["options"][selected_pos][1]
+
+                            correct_str = next(opt[1] for opt in q["options"] if opt[0] == q["correct_idx"])
+                            is_correct = (orig_idx == q["correct_idx"])
+                            if is_correct:
+                                score += 1
+
+                            report_details.append({
+                                "question": q["question"],
+                                "chosen": selected_str,
+                                "correct": correct_str,
+                                "is_correct": is_correct,
+                                "explanation": q["explanation"]
+                            })
+
+                        # الحفظ في Supabase
+                        supabase.table("submissions").insert({
+                            "quiz_id": target_quiz["id"],
+                            "subject": target_quiz["subject"],
+                            "student_name": student_name.strip(),
+                            "score": score,
+                            "total": total,
+                            "answers": report_details
+                        }).execute()
+
+                        st.session_state[result_state_key] = {
+                            "score": score,
+                            "total": total,
+                            "details": report_details
+                        }
+                        st.rerun()
+
+            if result_state_key in st.session_state:
+                res_data = st.session_state[result_state_key]
+                st.balloons()
+                st.success(f"أحسنت يا {student_name}! نتيجتك هي: {res_data['score']} من {res_data['total']}")
+
+                st.subheader("🔍 مراجعة الإجابات والتفسيرات:")
+                for idx, item in enumerate(res_data["details"]):
+                    with st.container():
+                        if item["is_correct"]:
+                            st.markdown(f"✅ **س{idx+1}: {item['question']}**")
+                            st.write(f"- إجابتك: {item['chosen']}")
+                        else:
+                            st.markdown(f"❌ **س{idx+1}: {item['question']}**")
+                            st.write(f"- إجابتك: {item['chosen']}")
+                            st.write(f"- الإجابة الصحيحة: {item['correct']}")
+
+                        st.caption(f"💡 السبب: {item['explanation']}")
+
+                        if not item["is_correct"]:
+                            tutor_key = f"tutor_ans_{target_quiz['id']}_{idx}"
+                            if st.button(f"🤖 اطلب من المعلم الذكي شرح هذا السؤال", key=f"tutor_btn_{target_quiz['id']}_{idx}"):
+                                with st.spinner("المعلم الذكي يكتب لك الشرح الآن..."):
+                                    explanation_text = ask_ai_tutor(
+                                        item["question"], item["chosen"], item["correct"], item["explanation"]
+                                    )
+                                    st.session_state[tutor_key] = explanation_text
+
+                            if tutor_key in st.session_state:
+                                st.info(st.session_state[tutor_key])
+
+                        st.write("---")
