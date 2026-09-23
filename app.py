@@ -23,8 +23,9 @@ groq_client = Groq(api_key=GROQ_API_KEY)
 # حسابات الأساتذة والمواد
 TEACHERS_DB = {
     "أ. عمر": {"password": "bio123", "subject": "الأحياء"},
-    "أ. فتوح": {"password": "math123", "subject": "الرياضيات"},
+    "أ. سيد": {"password": "math123", "subject": "الرياضيات"},
     "أ. رجب": {"password": "islamic123", "subject": "التربية الإسلامية"}
+    "أ. محمد": {"password": "chm123", "subject": "الكيمياء"}
 }
 
 st.set_page_config(page_title="منصة منارة التعليمية", layout="wide")
