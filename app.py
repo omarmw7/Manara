@@ -2,7 +2,6 @@ import streamlit as st
 from openai import OpenAI
 from groq import Groq
 from supabase import create_client, Client
-import fitz  # PyMuPDF
 import base64
 import json
 import random
@@ -11,35 +10,29 @@ import pandas as pd
 import re
 
 # ========================================================
-# 🔑 ضع مفتاحك هنا مباشرة وسيتعرف عليه الكود تلقائياً
+# 🔑 إعدادات الربط والمفاتيح المعتمدة
 # ========================================================
-# الصق المفتاح الذي نسخته هنا بين علامتي التنصيص:
-MY_API_KEY = st.secrets.get("AI_API_KEY", "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")
+# 1. مفتاح OpenRouter النشط الخاص بك
+OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", "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")
 
-# مفاتيح Groq و Supabase مدمجة وجاهزة
+# 2. مفتاح Groq للمعلم الذكي الخاص بالطلاب
 GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", "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")
+
+# 3. مفاتيح قاعدة البيانات Supabase
 SUPABASE_URL = st.secrets.get("SUPABASE_URL")
 SUPABASE_KEY = st.secrets.get("SUPABASE_KEY")
 
-# تهيئة قاعدة البيانات و Groq
+# تهيئة العملاء
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 groq_client = Groq(api_key=GROQ_API_KEY)
 
-# كاشف ذكي: تحديد السيرفر المناسب بناءً على نوع المفتاح
-if str(MY_API_KEY).startswith("sk-or-"):
-    BASE_URL = "https://openrouter.ai/api/v1"
-    MODEL_NAME = "openrouter/free"
-else:
-    BASE_URL = "https://models.github.ai/inference"
-    MODEL_NAME = "openai/gpt-4o-mini"
-
-# تأكد أن الاسم هنا هو openrouter_client:
+# عميل OpenRouter الرسمي
 openrouter_client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
-    api_key=MY_API_KEY,
+    api_key=OPENROUTER_API_KEY,
 )
 
-# --- إعداد الصفحة والواجهة RTL ---
+# --- ضبط الصفحة وتنسيق الاتجاه (RTL) ---
 st.set_page_config(
     page_title="منصة منارة التعليمية الذكية",
     page_icon="🎓",
@@ -69,35 +62,22 @@ def generate_quiz_code(subject):
     return f"{prefix}-{code_chars}"
 
 # ========================================================
-# 👁️ معالجة الـ PDF بصرياً وتنظيف الرد
+# 🧹 تنظيف واستخراج كائن الـ JSON بأمان
 # ========================================================
-def convert_pdf_to_base64_images(pdf_bytes, max_pages=3):
-    # تحويل ملف الـ PDF إلى Base64
-    b64_pdf = base64.b64encode(pdf_bytes).decode("utf-8")
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    base64_images = []
-    for page_num in range(min(len(doc), max_pages)):
-        page = doc[page_num]
-        pix = page.get_pixmap(dpi=90)
-        img_bytes = pix.tobytes("jpeg", jpg_quality=70)
-        b64 = base64.b64encode(img_bytes).decode("utf-8")
-        base64_images.append(f"data:image/jpeg;base64,{b64}")
-    return base64_images
-
 def clean_and_parse_json(text):
     if not text:
         raise ValueError("وصل رد فارغ من الموديل.")
     
-    # 1. إزالة أي أفكار أو كلام تمهيدي مثل <think> ... </think>
+    # 1. إزالة وسوم التفكير <think> ... </think>
     clean_text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
     clean_text = clean_text.strip()
     
-    # 2. إزالة علامات الماركداون ```json
+    # 2. إزالة علامات الماركداون
     clean_text = re.sub(r"^```(?:json)?\s*", "", clean_text, flags=re.IGNORECASE)
     clean_text = re.sub(r"\s*```$", "", clean_text)
     clean_text = clean_text.strip()
     
-    # 3. استخراج كائن الـ JSON الحقيقي حصراً بين أول { وآخر }
+    # 3. استخراج كائن الـ JSON الحقيقي بين { و }
     match = re.search(r"(\{.*\})", clean_text, re.DOTALL)
     if match:
         try:
@@ -108,26 +88,25 @@ def clean_and_parse_json(text):
     try:
         return json.loads(clean_text)
     except Exception:
-        raise ValueError(f"تعذر استخراج كائن JSON صالح: {clean_text[:120]}")
-# ========================================================
-# 🚀 توليد الاختبار
-# ========================================================
-def create_quiz_smart(pdf_bytes, subject, title, num_q, diff, allow_tf, make_summary):
-    if not MY_API_KEY or "الصق" in MY_API_KEY:
-        raise ValueError("يرجى لصق المفتاح في السطر 17 في الكود أولاً.")
+        raise ValueError(f"تعذر استخراج كائن JSON صالح من الرد: {clean_text[:120]}")
 
-    page_images = convert_pdf_to_base64_images(pdf_bytes, max_pages=3)
+# ========================================================
+# 🚀 دالة توليد الاختبار (مُعرّف فيها b64_pdf بشكل قطعي)
+# ========================================================
+def generate_quiz_from_pdf(pdf_bytes, subject, title, num_q, diff, allow_tf, make_summary):
+    # تعريف المتغير بشكل مباشر في أول الدالة
+    b64_pdf = base64.b64encode(pdf_bytes).decode("utf-8")
     
     types_desc = "جميع الأسئلة اختيار من متعدد بـ 4 خيارات (إجابة واحدة صحيحة، و3 خيارات مشتتة ذكية ومتقاربة)."
     if allow_tf:
-        types_desc += " يمكنك تنويع الأسئلة بتضمين أسئلة صح أو خطأ بخيارين: 1) صح، 2) خطأ."
+        types_desc += " مع إمكانية تضمين أسئلة صح أو خطأ بخيارين: 1) صح، 2) خطأ."
 
     prompt_text = f"""
 أنت موجه تربوي وخبير امتحانات متخصص في مادة ({subject}).
-أمامك صور صفحات الدرس المرفقة لدرس: ({title}).
+أمامك ملف الـ PDF المرفق لدرس: ({title}).
 
 المعايير التربوية:
-1. انظر بعناية للصفحات واقرأ النصوص والجداول والمفاهيم بدقة.
+1. اقرأ محتوى المستند بدقة واستخرج المفاهيم والمعلومات من صلبه.
 2. اصنع بالضبط {num_q} أسئلة بمستوى صعوبة ({diff}) تقيس الفهم الحقيقي والتحليل وابتعد عن الأسئلة السطحية.
 3. نمط الأسئلة: {types_desc}.
 4. إذا كان make_summary = {make_summary}، اكتب ملخصاً في حقل summary يشرح جوهر الدرس في 4 نقاط رئيسية، وإلا اتركه فارغاً.
@@ -138,7 +117,7 @@ def create_quiz_smart(pdf_bytes, subject, title, num_q, diff, allow_tf, make_sum
   "questions": [
     {{
       "id": 1,
-      "question": "نص السؤال الدقيق من واقع محتوى الدرس؟",
+      "question": "نص السؤال الدقيق من صلب الدرس؟",
       "options": ["الخيار الأول", "الخيار الثاني", "الخيار الثالث", "الخيار الرابع"],
       "correct_index": 0,
       "explanation": "شرح علمي مستند إلى صفحات الدرس لسبب صحة هذا الخيار واستبعاد الباقي"
@@ -147,13 +126,6 @@ def create_quiz_smart(pdf_bytes, subject, title, num_q, diff, allow_tf, make_sum
 }}
 ملاحظة: correct_index هو رقم الفهرس للإجابة الصحيحة (0 للخيار الأول، 1 للثاني، 2 للثالث، 3 للرابع).
 """
-
-    user_content = [{"type": "text", "text": prompt_text}]
-    for img_url in page_images:
-        user_content.append({
-            "type": "image_url",
-            "image_url": {"url": img_url}
-        })
 
     response = openrouter_client.chat.completions.create(
         model="openrouter/free",
@@ -177,15 +149,22 @@ def create_quiz_smart(pdf_bytes, subject, title, num_q, diff, allow_tf, make_sum
         ],
         response_format={"type": "json_object"},
         temperature=0.2,
-        max_tokens=4000  # مساحة كافية لتوليد كل الأسئلة دون أن ينقطع
+        max_tokens=4000
     )
+
+    if hasattr(response, "choices") and response.choices:
+        raw_text = response.choices[0].message.content
+    else:
+        raw_text = str(response)
+
+    return clean_and_parse_json(raw_text)
 
 # ========================================================
 # ⚡ دوال الطلاب والتحليلات عبر Groq
 # ========================================================
 def analyze_class_submissions(subject, submissions_data):
     prompt = f"""
-أنت مستشار تربوي. إليك بيانات أداء الطلاب في مادة ({subject}):
+أنت مستشار تربوي. إليك بيانات أداء الطلاب في اختبارات مادة ({subject}):
 {json.dumps(submissions_data, ensure_ascii=False)}
 
 المطلوب: قدم تقريراً تشخيصياً واضحاً للأستاذ عن نقاط الضعف وتوصيات الحصة القادمة.
@@ -205,7 +184,7 @@ def ask_ai_tutor(question, student_ans, correct_ans, explanation):
 - الإجابة الصحيحة: {correct_ans}
 - التفسير: {explanation}
 
-اشرح للطالب بأسلوب مبسط جداً وداعم سبب عدم دقة إجابته، وكيف يفهم الإجابة الصحيحة بسهولة.
+اشرح للطالب بأسلوب مبسط جداً وداعم سبب عدم صحة إجابته وكيف يفهم الصواب بسهولة.
 """
     completion = groq_client.chat.completions.create(
         messages=[{"role": "user", "content": prompt}],
@@ -254,10 +233,10 @@ if role == "👨‍🏫 بوابة المعلم":
         ])
 
         with tab1:
-            st.subheader("🤖 توليد اختبار بأعلى دقة بصرية من ملف PDF")
+            st.subheader("🤖 توليد اختبار دقيق بقراءة مباشرة للـ PDF")
             c_title, c_num, c_diff = st.columns([2, 1, 1])
             with c_title:
-                quiz_title = st.text_input("عنوان الدرس / الاختبار:", placeholder="مثال: الخلية والأنسجة الحية")
+                quiz_title = st.text_input("عنوان الدرس / الاختبار:", placeholder="مثال: علم الوراثة المندلية")
             with c_num:
                 num_q = st.number_input("عدد الأسئلة:", 1, 25, 5)
             with c_diff:
@@ -281,9 +260,10 @@ if role == "👨‍🏫 بوابة المعلم":
             pdf_file = st.file_uploader("ارفع ملف الدرس بصيغة (PDF):", type=["pdf"])
 
             if pdf_file and quiz_title and st.button("🚀 توليد الاختبار ونشره", type="primary"):
-                with st.spinner("جاري قراءة صفحات الـ PDF بصرياً وهندسة الأسئلة بالذكاء الاصطناعي..."):
+                with st.spinner("الذكاء الاصطناعي يقوم بقراءة الـ PDF وصياغة الأسئلة بدقة..."):
                     try:
-                        ai_data = create_quiz_smart(
+                        # استدعاء الدالة الموحدة
+                        ai_data = generate_quiz_from_pdf(
                             pdf_file.getvalue(), subject, quiz_title, num_q, diff, allow_tf, enable_summary
                         )
                         quiz_code = generate_quiz_code(subject)
