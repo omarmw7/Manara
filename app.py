@@ -189,32 +189,29 @@ def analyze_class_submissions(subject, submissions_data):
 أنت مستشار تربوي. إليك بيانات أداء الطلاب في اختبارات مادة ({subject}):
 {json.dumps(submissions_data, ensure_ascii=False)}
 
-المطلوب: قدم تقريراً تشخيصياً واضحاً للأستاذ عن نقاط الضعف وتوصيات الحصة القادمة.
+المطلوب: قدم تقريراً تشخيصياً واضحاً باللغة العربية الفصحى للأستاذ عن نقاط الضعف وتوصيات الحصة القادمة.
 """
     completion = groq_client.chat.completions.create(
         messages=[{"role": "user", "content": prompt}],
-        model="llama-3.3-70b-versatile",
+        model="llama-3.1-8b-instant",  # تحديث اسم النموذج لحل خطأ 404
         temperature=0.2
     )
     return completion.choices[0].message.content
 
 def ask_ai_tutor(question, student_ans, correct_ans, explanation):
     prompt = f"""
-أنت معلم خصوصي ودود وصبور. الطالب أخطأ في هذا السؤال:
+أنت معلم خصوصي ودود وصبور. اشرح للطالب باللغة العربية الفصحى حصراً سبب خطئه وكيف يتذكر الإجابة الصحيحة:
 - السؤال: {question}
 - إجابة الطالب: {student_ans}
 - الإجابة الصحيحة: {correct_ans}
 - التفسير: {explanation}
-
-اشرح للطالب بأسلوب مبسط جداً وداعم سبب عدم صحة إجابته وكيف يفهم الصواب بسهولة.
 """
     completion = groq_client.chat.completions.create(
         messages=[{"role": "user", "content": prompt}],
-        model="llama-3.3-70b-versatile",
+        model="llama-3.1-8b-instant",  # تحديث اسم النموذج لحل خطأ 404
         temperature=0.3
     )
     return completion.choices[0].message.content
-
 # =======================================================
 # الواجهة الرئيسية
 # =======================================================
