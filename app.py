@@ -7,7 +7,7 @@ import json
 import random
 import string
 import pandas as pd
-import re
+
 
 # ========================================================
 # 🔑 إعدادات الربط والمفاتيح المعتمدة
