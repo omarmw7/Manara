@@ -24,7 +24,7 @@ openrouter_client = OpenAI(
     timeout=120.0
 )
 
-# --- ضبط الصفحة وتنسيق الاتجاه والتصميم الفخم (Modern SaaS UI) ---
+# --- ضبط الصفحة وتنسيق الثيم الداكن والفخم ---
 st.set_page_config(
     page_title="منصة منارة التعليمية الذكية",
     page_icon="🎓",
@@ -32,36 +32,29 @@ st.set_page_config(
 )
 
 st.markdown("""
-st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap');
 
-    /* خط كايرو الفخم وتنسيق RTL لجميع النصوص */
     html, body, [class*="css"], .stApp {
         font-family: 'Cairo', sans-serif !important;
         direction: rtl;
         text-align: right;
     }
 
-    /* عنوان رئيسي متدرج مضيء وفخم */
     h1 {
         font-weight: 900 !important;
-        background: linear-gradient(135deg, #60A5FA 0%, #A78BFA 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
+        color: #60A5FA !important;
         margin-bottom: 20px !important;
         text-align: right !important;
     }
 
-    /* ضمان وضوح جميع النصوص والعناوين فوق الخلفيات */
     p, span, label, h2, h3, h4, div[data-testid="stMarkdownContainer"] p { 
         direction: rtl !important; 
         text-align: right !important; 
         unicode-bidi: isolate !important;
-        color: #F1F5F9 !important; /* لون نص فاتح ومقروء 100% */
+        color: #F1F5F9 !important;
     }
 
-    /* بطاقات الأسئلة الداكنة الفخمة */
     .quiz-card {
         background: #1E293B !important;
         border-radius: 16px;
@@ -71,7 +64,6 @@ st.markdown("""
         box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.4);
     }
 
-    /* وسم رقم السؤال */
     .q-badge {
         display: inline-block;
         background: #1E3A8A !important;
@@ -84,7 +76,6 @@ st.markdown("""
         border: 1px solid #3B82F6;
     }
 
-    /* إصلاح خيارات الراديو في السايدبار وبوابة الطالب لتكون واضحة وفخمة */
     div[data-testid="stRadio"] > div {
         display: flex;
         flex-direction: column;
@@ -107,7 +98,6 @@ st.markdown("""
         color: #F8FAFC !important;
     }
 
-    /* كروت المراجعة الملونة (صحيح / خطأ) للوضع الليلي */
     .correct-box {
         background: rgba(16, 185, 129, 0.12) !important;
         border: 1.5px solid #10B981 !important;
@@ -123,14 +113,12 @@ st.markdown("""
         margin-bottom: 16px;
     }
 
-    /* تحسين شكل القوائم المنسدلة */
     div[data-testid="stExpander"] { 
         direction: rtl; 
         text-align: right; 
         border-color: #334155 !important;
     }
 
-    /* الأزرار الرئيسية */
     .stButton > button {
         border-radius: 12px !important;
         font-weight: 700 !important;
