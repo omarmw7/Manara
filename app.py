@@ -610,19 +610,31 @@ elif role == "👨‍🎓 بوابة الطالب":
             active_quiz = st.session_state[session_quiz_key]
             result_state_key = f"result_{target_quiz['id']}_{student_name.strip()}"
 
-            if result_state_key not in st.session_state:
-                user_choices = {}
-                with st.form("exam_form"):
-                    total_qs = len(active_quiz)
-                    for idx, q in enumerate(active_quiz):
-                        # عرض السؤال داخل بطاقة تفاعلية عصرية
-                        st.markdown(f"""
-                        <div class="quiz-card">
-                            <span class="q-badge">السؤال {idx + 1} من {total_qs}</span>
-                            <h3 style="margin-top: 4px; color: #1E293B; font-size: 1.15rem; line-height: 1.6;">{q['question']}</h3>
-                        </div>
-                        """, unsafe_allow_html=True)
+            if result_state_key in st.session_state:
+                res_data = st.session_state[result_state_key]
+                st.balloons()
 
+                score = res_data['score']
+                total = res_data['total']
+                pct = (score / total) * 100
+
+                # تحديد الوسام واللون
+                badge_title = "🏆 عبقري ومتميز!" if pct >= 85 else ("🌟 بطل، نتيجة رائعة!" if pct >= 65 else "💪 بداية موفقة، راجع أخطاءك لتتفوق!")
+                badge_color = "#10B981" if pct >= 65 else "#F59E0B"
+
+                # كرت دارك فخم ومتناسق مع الوضع الليلي بنصوص واضحة جداً
+                st.markdown(f"""
+                <div style="background: #1E293B; border-radius: 20px; padding: 30px; text-align: center; border: 1.5px solid #334155; box-shadow: 0 10px 30px rgba(0,0,0,0.5); margin-bottom: 25px;">
+                    <div style="font-size: 3rem; margin-bottom: 8px;">{badge_title.split()[0]}</div>
+                    <h2 style="color: #F8FAFC !important; margin: 0; font-weight: 800; font-size: 1.8rem;">{badge_title}</h2>
+                    <p style="color: #94A3B8 !important; font-size: 1.15rem; margin-top: 8px; margin-bottom: 18px;">
+                        أحسنت يا <b style="color: #60A5FA !important;">{student_name}</b>، إليك تفاصيل نتيجتك:
+                    </p>
+                    <div style="display: inline-block; background: rgba(16, 185, 129, 0.15); color: #34D399; padding: 12px 32px; border-radius: 30px; font-weight: 900; font-size: 1.8rem; border: 1.5px solid #10B981;">
+                        {score} من {total} ({pct:.0f}%)
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
                         opts_text = [o[1] for o in q["options"]]
                         user_choices[idx] = st.radio(
                             "اختر الإجابة المناسبة:",
