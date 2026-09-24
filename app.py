@@ -184,6 +184,9 @@ def generate_quiz_from_pdf(pdf_bytes, subject, title, num_q, diff, allow_tf, mak
 # ========================================================
 # ⚡ دوال الطلاب والتحليلات عبر Groq
 # ========================================================
+# ========================================================
+# ⚡ دوال الطلاب والتحليلات عبر OpenRouter الموحد
+# ========================================================
 def analyze_class_submissions(subject, submissions_data):
     prompt = f"""
 أنت مستشار تربوي. إليك بيانات أداء الطلاب في اختبارات مادة ({subject}):
@@ -191,24 +194,24 @@ def analyze_class_submissions(subject, submissions_data):
 
 المطلوب: قدم تقريراً تشخيصياً واضحاً باللغة العربية الفصحى للأستاذ عن نقاط الضعف وتوصيات الحصة القادمة.
 """
-    completion = groq_client.chat.completions.create(
+    completion = openrouter_client.chat.completions.create(
         messages=[{"role": "user", "content": prompt}],
-        model="llama-3.1-8b-instant",  # تحديث اسم النموذج لحل خطأ 404
+        model="openrouter/free",
         temperature=0.2
     )
     return completion.choices[0].message.content
 
 def ask_ai_tutor(question, student_ans, correct_ans, explanation):
     prompt = f"""
-أنت معلم خصوصي ودود وصبور. اشرح للطالب باللغة العربية الفصحى حصراً سبب خطئه وكيف يتذكر الإجابة الصحيحة:
+أنت معلم خصوصي ودود ومشجع وصبور. اشرح للطالب باللغة العربية الفصحى حصراً وبأسلوب مبسط ومشجع لماذا إجابته كانت غير دقيقة، وكيف يفهم الإجابة الصحيحة بسهولة:
 - السؤال: {question}
 - إجابة الطالب: {student_ans}
 - الإجابة الصحيحة: {correct_ans}
 - التفسير: {explanation}
 """
-    completion = groq_client.chat.completions.create(
+    completion = openrouter_client.chat.completions.create(
         messages=[{"role": "user", "content": prompt}],
-        model="llama-3.1-8b-instant",  # تحديث اسم النموذج لحل خطأ 404
+        model="openrouter/free",
         temperature=0.3
     )
     return completion.choices[0].message.content
