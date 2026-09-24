@@ -72,6 +72,8 @@ def generate_quiz_code(subject):
 # 👁️ معالجة الـ PDF بصرياً وتنظيف الرد
 # ========================================================
 def convert_pdf_to_base64_images(pdf_bytes, max_pages=3):
+    # تحويل ملف الـ PDF إلى Base64
+    b64_pdf = base64.b64encode(pdf_bytes).decode("utf-8")
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     base64_images = []
     for page_num in range(min(len(doc), max_pages)):
