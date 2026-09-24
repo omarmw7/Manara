@@ -110,67 +110,51 @@ def clean_and_parse_json(text):
 # 🚀 دالة توليد الاختبار (مضبوطة بالعربية الفصحى 100%)
 # ========================================================
 def generate_quiz_from_pdf(pdf_bytes, subject, title, num_q, diff, allow_tf, make_summary):
-    # تحويل الصفحات لصور حقيقية
+    # 1. تجهيز صور الصفحات كالسابق تماماً
     images_content = convert_pdf_to_real_images(pdf_bytes, max_pages=3)
-    
     if not images_content:
         raise ValueError("ملف الـ PDF فارغ.")
 
-    types_desc = "جميع الأسئلة اختيار من متعدد بـ 4 خيارات (إجابة واحدة صحيحة، و3 خيارات مشتتة ذكية ومتقاربة)."
+    types_desc = "جميع الأسئلة اختيار من متعدد بـ 4 خيارات."
     if allow_tf:
         types_desc += " مع إمكانية تضمين أسئلة صح أو خطأ بخيارين: 1) صح، 2) خطأ."
 
-    system_instruction = (
-        "You are an educational assessment expert. All generated content, questions, options, summaries, and explanations "
-        "MUST BE STRICTLY AND EXCLUSIVELY WRITTEN IN FORMAL ARABIC (اللغة العربية الفصحى). "
-        "Do not use English in any question or option. Output valid JSON only."
-    )
-
+    # 2. نص توجيه بسيط ومباشر يفرض العربي بدون تعقيد
     prompt_text = f"""
-أنت موجه تربوي وخبير امتحانات متخصص في مادة ({subject}).
-أمامك صور صفحات الدرس المرفقة لدرس: ({title}).
+أنت موجه تربوي في مادة ({subject}).
+اقرأ صور صفحات الدرس لدرس: ({title}).
 
-⚠️ شرط إلزامي وحاسم:
-يجب أن تكون جميع الأسئلة، والخيارات، والشروحات، والملخص مكتوبة بـ (اللغة العربية الفصحى حصراً 100%)، ويُمنع منعاً باتاً كتابة أي كلمة بالإنجليزي.
+ملاحظة هامة جداً: اكتب كل الأسئلة والخيارات والشروحات باللغة العربية الفصحى حصراً. لا تستخدم اللغة الإنجليزية.
 
-المعايير التربوية:
-1. انظر بعناية لصور الصفحات واقرأ النصوص والجداول بدقة من صلب الدرس.
-2. اصنع بالضبط {num_q} أسئلة بمستوى صعوبة ({diff}) تقيس الفهم والتحليل وليس الحفظ السطحي.
-3. نمط الأسئلة: {types_desc}.
-4. إذا كان make_summary = {make_summary}، اكتب ملخصاً في حقل summary باللغة العربية الفصحى يشرح جوهر الدرس في 4 نقاط رئيسية، وإلا اتركه فارغاً.
+المطلوب:
+1. استخرج {num_q} أسئلة بمستوى ({diff}) من صلب الصفحات.
+2. نمط الأسئلة: {types_desc}.
+3. إذا كان make_summary = {make_summary}، اكتب ملخصاً في حقل summary باللغة العربية.
 
-أرجع كائن JSON حصرياً وصالحاً 100% بالهيكل التالي فقط:
+أخرج كائن JSON بالهيكل التالي حصراً:
 {{
-  "summary": "نص الملخص باللغة العربية...",
+  "summary": "ملخص الدرس باللغة العربية...",
   "questions": [
     {{
       "id": 1,
-      "question": "نص السؤال الدقيق باللغة العربية الفصحى؟",
+      "question": "نص السؤال باللغة العربية الفصحى؟",
       "options": ["الخيار الأول بالعربي", "الخيار الثاني بالعربي", "الخيار الثالث بالعربي", "الخيار الرابع بالعربي"],
       "correct_index": 0,
-      "explanation": "شرح علمي باللغة العربية لسبب صحة الخيار واستبعاد الباقي"
+      "explanation": "شرح الإجابة باللغة العربية الفصحى"
     }}
   ]
 }}
-ملاحظة: correct_index هو رقم الفهرس للإجابة الصحيحة (0 للخيار الأول، 1 للثاني، 2 للثالث، 3 للرابع).
 """
 
     user_payload = [{"type": "text", "text": prompt_text}] + images_content
 
+    # 3. نفس الاستدعاء البسيط اللي اشتغل معك بدون فلسفة زائدة
     response = openrouter_client.chat.completions.create(
         model="openrouter/free",
         messages=[
-            {
-                "role": "system",
-                "content": system_instruction
-            },
-            {
-                "role": "user",
-                "content": user_payload
-            }
+            {"role": "user", "content": user_payload}
         ],
-        temperature=0.2,
-        max_tokens=4000
+        temperature=0.2
     )
 
     if not response.choices or not response.choices[0].message.content:
