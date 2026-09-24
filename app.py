@@ -692,7 +692,7 @@ elif role == "👨‍🎓 بوابة الطالب":
                         }
                         st.rerun()
 
-            if result_state_key in st.session_state:
+            if result_state_key in st.session_state: 
                 res_data = st.session_state[result_state_key]
                 st.balloons()
 
