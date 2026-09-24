@@ -32,107 +32,105 @@ st.set_page_config(
 )
 
 st.markdown("""
+st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap');
 
+    /* خط كايرو الفخم وتنسيق RTL لجميع النصوص */
     html, body, [class*="css"], .stApp {
         font-family: 'Cairo', sans-serif !important;
         direction: rtl;
         text-align: right;
     }
 
-    .stApp {
-        background-color: #F8FAFC;
-    }
-
-    /* عناوين بجرادينت عصري */
+    /* عنوان رئيسي متدرج مضيء وفخم */
     h1 {
         font-weight: 900 !important;
-        background: linear-gradient(135deg, #1E3A8A 0%, #3B82F6 100%);
+        background: linear-gradient(135deg, #60A5FA 0%, #A78BFA 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         margin-bottom: 20px !important;
+        text-align: right !important;
     }
 
-    /* نصوص منسقة تدعم العربي والإنجليزي دون انقلاب الأقواس */
+    /* ضمان وضوح جميع النصوص والعناوين فوق الخلفيات */
     p, span, label, h2, h3, h4, div[data-testid="stMarkdownContainer"] p { 
         direction: rtl !important; 
         text-align: right !important; 
         unicode-bidi: isolate !important;
+        color: #F1F5F9 !important; /* لون نص فاتح ومقروء 100% */
     }
 
-    /* كروت الأسئلة التفاعلية الفخمة */
+    /* بطاقات الأسئلة الداكنة الفخمة */
     .quiz-card {
-        background: #FFFFFF;
-        border-radius: 18px;
+        background: #1E293B !important;
+        border-radius: 16px;
         padding: 22px 26px;
         margin-bottom: 20px;
-        border: 1px solid #E2E8F0;
-        box-shadow: 0 4px 15px -2px rgba(0, 0, 0, 0.04);
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
-    }
-    .quiz-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 25px -4px rgba(0, 0, 0, 0.08);
+        border: 1px solid #334155;
+        box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.4);
     }
 
     /* وسم رقم السؤال */
     .q-badge {
         display: inline-block;
-        background: #EFF6FF;
-        color: #2563EB;
+        background: #1E3A8A !important;
+        color: #93C5FD !important;
         font-weight: 800;
         font-size: 0.85rem;
         padding: 4px 14px;
         border-radius: 20px;
         margin-bottom: 10px;
-        border: 1px solid #DBEAFE;
+        border: 1px solid #3B82F6;
     }
 
-    /* تحويل خيارات الراديو إلى أزرار تفاعلية أنيقة */
+    /* إصلاح خيارات الراديو في السايدبار وبوابة الطالب لتكون واضحة وفخمة */
     div[data-testid="stRadio"] > div {
         display: flex;
         flex-direction: column;
         gap: 10px;
     }
     div[data-testid="stRadio"] label {
-        background: #FFFFFF !important;
-        border: 1.5px solid #E2E8F0 !important;
+        background: #1E293B !important;
+        border: 1.5px solid #334155 !important;
         padding: 12px 18px !important;
-        border-radius: 14px !important;
+        border-radius: 12px !important;
         transition: all 0.2s ease !important;
         cursor: pointer !important;
-        display: flex !important;
-        align-items: center !important;
-        gap: 12px !important;
+        color: #F8FAFC !important;
     }
     div[data-testid="stRadio"] label:hover {
         border-color: #3B82F6 !important;
-        background: #F0F7FF !important;
+        background: #0F172A !important;
+    }
+    div[data-testid="stRadio"] label p {
+        color: #F8FAFC !important;
     }
 
-    /* كروت المراجعة الملونة (صحيح / خطأ) */
+    /* كروت المراجعة الملونة (صحيح / خطأ) للوضع الليلي */
     .correct-box {
-        background: #F0FDF4;
-        border: 1.5px solid #86EFAC;
+        background: rgba(16, 185, 129, 0.12) !important;
+        border: 1.5px solid #10B981 !important;
         border-radius: 14px;
         padding: 16px 20px;
         margin-bottom: 16px;
     }
     .wrong-box {
-        background: #FEF2F2;
-        border: 1.5px solid #FCA5A5;
+        background: rgba(239, 68, 68, 0.12) !important;
+        border: 1.5px solid #EF4444 !important;
         border-radius: 14px;
         padding: 16px 20px;
         margin-bottom: 16px;
     }
 
+    /* تحسين شكل القوائم المنسدلة */
     div[data-testid="stExpander"] { 
         direction: rtl; 
         text-align: right; 
+        border-color: #334155 !important;
     }
 
-    /* تحسين شكل الأزرار */
+    /* الأزرار الرئيسية */
     .stButton > button {
         border-radius: 12px !important;
         font-weight: 700 !important;
