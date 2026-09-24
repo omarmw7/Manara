@@ -132,7 +132,7 @@ TEACHERS_DB = {
     "أ. عمر": {"password": "bio123", "subject": "الأحياء"},
     "أ. سيد": {"password": "math123", "subject": "الرياضيات"},
     "أ. رجب": {"password": "islamic123", "subject": "التربية الإسلامية"},
-    "أ. محمد": {"password": "chm123", "subject": "الكيمياء"}
+    "أ. محمد": {"password": "chm123", "subject": "الكيمياء"},
     "أ.أحمد": {"password": "Eng123", "subject": "English Language"}
 }
 
