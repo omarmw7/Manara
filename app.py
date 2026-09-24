@@ -715,6 +715,7 @@ elif role == "👨‍🎓 بوابة الطالب":
                 </div>
                 """, unsafe_allow_html=True)
 
+                
                 st.markdown("### 🔍 مراجعة الأسئلة وتفسير الإجابات:")
                 for idx, item in enumerate(res_data["details"]):
                     if item["is_correct"]:
