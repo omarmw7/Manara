@@ -133,6 +133,7 @@ TEACHERS_DB = {
     "أ. سيد": {"password": "math123", "subject": "الرياضيات"},
     "أ. رجب": {"password": "islamic123", "subject": "التربية الإسلامية"},
     "أ. محمد": {"password": "chm123", "subject": "الكيمياء"}
+    "أ.أحمد": {"password": "Eng123", "subject": "English Language"}
 }
 
 def generate_quiz_code(subject):
