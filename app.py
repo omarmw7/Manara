@@ -91,20 +91,19 @@ def clean_and_parse_json(text):
     clean_text = re.sub(r"\s*```$", "", clean_text)
     clean_text = clean_text.strip()
 
-    # محاولة فك الـ JSON مباشرة
     match = re.search(r"(\{.*\})", clean_text, re.DOTALL)
     candidate = match.group(1) if match else clean_text
     
     try:
         return json.loads(candidate)
     except Exception:
-        # إذا انقطع الرد قبل إغلاق الأقواس، نقوم بإغلاقها برمجياً
-        if not candidate.endswith("}"):
-            for fix in ["}", "]}", "]}}", "\"}]}"]]:
-                try:
-                    return json.loads(candidate + fix)
-                except Exception:
-                    pass
+        # إكمال الأقواس بأمان بدون أي أخطاء في السنتاكس
+        fixes = ["}", "]}", "]}}", '"}]}']
+        for fix in fixes:
+            try:
+                return json.loads(candidate + fix)
+            except Exception:
+                pass
         raise ValueError(f"تعذر استخراج كائن JSON صالح من الرد: {clean_text[:120]}")
 
 def generate_quiz_from_pdf(pdf_bytes, subject, title, num_q, diff, allow_tf, make_summary):
