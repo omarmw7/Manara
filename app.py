@@ -159,8 +159,8 @@ def generate_quiz_from_pdf(pdf_bytes, subject, title, num_q, diff, allow_tf, mak
 
     user_payload = [{"type": "text", "text": prompt_text}] + images_content
 
-    response = openrouter_client.chat.completions.create(
-        model="inclusionai/ling-3.0-flash-vl:free",
+   response = openrouter_client.chat.completions.create(
+        model="openrouter/free",  # <--- هذا هو الذي اشتغل معك بنجاح
         messages=[
             {
                 "role": "system",
