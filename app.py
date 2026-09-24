@@ -18,8 +18,8 @@ MY_API_KEY = st.secrets.get("AI_API_KEY", "sk-or-v1-71d062601dbb264dd14200c1a4ac
 
 # مفاتيح Groq و Supabase مدمجة وجاهزة
 GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", "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")
-SUPABASE_URL = st.secrets.get("SUPABASE_URL", "https://ccchpwhjkzbditeiixra.supabase.co")
-SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "sb_secret_pR4DghdZwMgLZVuLPKWdDA_552J20Yl")
+SUPABASE_URL = st.secrets.get("SUPABASE_URL")
+SUPABASE_KEY = st.secrets.get("SUPABASE_KEY")
 
 # تهيئة قاعدة البيانات و Groq
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
