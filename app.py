@@ -33,10 +33,10 @@ else:
     BASE_URL = "https://models.github.ai/inference"
     MODEL_NAME = "openai/gpt-4o-mini"
 
-ai_client = OpenAI(
-    base_url=BASE_URL,
-    api_key=MY_API_KEY,
-    timeout=120.0
+# تأكد أن الاسم هنا هو openrouter_client:
+openrouter_client = OpenAI(
+    base_url="https://openrouter.ai/api/v1",
+    api_key=OPENROUTER_API_KEY,
 )
 
 # --- إعداد الصفحة والواجهة RTL ---
