@@ -120,14 +120,12 @@ def generate_quiz_from_pdf(pdf_bytes, subject, title, num_q, diff, allow_tf, mak
     if allow_tf:
         types_desc += " مع إمكانية تضمين أسئلة صح أو خطأ بخيارين: 1) صح، 2) خطأ."
 
-    # 1. أمر النظام الإجباري باللغة العربية
     system_instruction = (
         "You are an educational assessment expert. All generated content, questions, options, summaries, and explanations "
         "MUST BE STRICTLY AND EXCLUSIVELY WRITTEN IN FORMAL ARABIC (اللغة العربية الفصحى). "
         "Do not use English in any question or option. Output valid JSON only."
     )
 
-    # 2. نص التوجيه الصارم لفرض اللغة العربية
     prompt_text = f"""
 أنت موجه تربوي وخبير امتحانات متخصص في مادة ({subject}).
 أمامك صور صفحات الدرس المرفقة لدرس: ({title}).
@@ -159,8 +157,8 @@ def generate_quiz_from_pdf(pdf_bytes, subject, title, num_q, diff, allow_tf, mak
 
     user_payload = [{"type": "text", "text": prompt_text}] + images_content
 
-   response = openrouter_client.chat.completions.create(
-        model="openrouter/free",  # <--- هذا هو الذي اشتغل معك بنجاح
+    response = openrouter_client.chat.completions.create(
+        model="openrouter/free",
         messages=[
             {
                 "role": "system",
