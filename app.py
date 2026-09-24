@@ -136,6 +136,7 @@ TEACHERS_DB = {
     "أ.أحمد": {"password": "Eng123", "subject": "English Language"}
 }
 
+
 def generate_quiz_code(subject):
     code_chars = ''.join(random.choices(string.digits, k=4))
     prefix = subject[:3].strip()
