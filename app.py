@@ -1,6 +1,5 @@
 import streamlit as st
 from openai import OpenAI
-from groq import Groq
 from supabase import create_client, Client
 import fitz  # PyMuPDF
 import base64
@@ -11,23 +10,21 @@ import pandas as pd
 import re
 
 # ========================================================
-# 🔑 إعدادات المفاتيح المعتمدة والفعّالة
+# 🔑 إعدادات الربط والمفاتيح المعتمدة
 # ========================================================
 OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", "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")
-GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", "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")
 SUPABASE_URL = st.secrets.get("SUPABASE_URL")
 SUPABASE_KEY = st.secrets.get("SUPABASE_KEY")
 
 # تهيئة العملاء
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-groq_client = Groq(api_key=GROQ_API_KEY)
-
 openrouter_client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=OPENROUTER_API_KEY,
+    timeout=120.0
 )
 
-# --- ضبط الصفحة وتنسيق الاتجاه (RTL) ---
+# --- ضبط الصفحة وتنسيق الاتجاه والتصميم الفخم (Modern SaaS UI) ---
 st.set_page_config(
     page_title="منصة منارة التعليمية الذكية",
     page_icon="🎓",
@@ -36,25 +33,110 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-    .stApp { 
-        direction: rtl; 
-        text-align: right; 
+    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap');
+
+    html, body, [class*="css"], .stApp {
+        font-family: 'Cairo', sans-serif !important;
+        direction: rtl;
+        text-align: right;
     }
-    p, span, label, h1, h2, h3, h4, div[data-testid="stMarkdownContainer"] p { 
+
+    .stApp {
+        background-color: #F8FAFC;
+    }
+
+    /* عناوين بجرادينت عصري */
+    h1 {
+        font-weight: 900 !important;
+        background: linear-gradient(135deg, #1E3A8A 0%, #3B82F6 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        margin-bottom: 20px !important;
+    }
+
+    /* نصوص منسقة تدعم العربي والإنجليزي دون انقلاب الأقواس */
+    p, span, label, h2, h3, h4, div[data-testid="stMarkdownContainer"] p { 
         direction: rtl !important; 
         text-align: right !important; 
         unicode-bidi: isolate !important;
     }
-    .stRadio label { 
-        direction: rtl !important; 
-        text-align: right !important; 
+
+    /* كروت الأسئلة التفاعلية الفخمة */
+    .quiz-card {
+        background: #FFFFFF;
+        border-radius: 18px;
+        padding: 22px 26px;
+        margin-bottom: 20px;
+        border: 1px solid #E2E8F0;
+        box-shadow: 0 4px 15px -2px rgba(0, 0, 0, 0.04);
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .quiz-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px -4px rgba(0, 0, 0, 0.08);
+    }
+
+    /* وسم رقم السؤال */
+    .q-badge {
+        display: inline-block;
+        background: #EFF6FF;
+        color: #2563EB;
+        font-weight: 800;
+        font-size: 0.85rem;
+        padding: 4px 14px;
+        border-radius: 20px;
+        margin-bottom: 10px;
+        border: 1px solid #DBEAFE;
+    }
+
+    /* تحويل خيارات الراديو إلى أزرار تفاعلية أنيقة */
+    div[data-testid="stRadio"] > div {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    div[data-testid="stRadio"] label {
+        background: #FFFFFF !important;
+        border: 1.5px solid #E2E8F0 !important;
+        padding: 12px 18px !important;
+        border-radius: 14px !important;
+        transition: all 0.2s ease !important;
+        cursor: pointer !important;
         display: flex !important;
         align-items: center !important;
-        gap: 8px !important;
+        gap: 12px !important;
     }
+    div[data-testid="stRadio"] label:hover {
+        border-color: #3B82F6 !important;
+        background: #F0F7FF !important;
+    }
+
+    /* كروت المراجعة الملونة (صحيح / خطأ) */
+    .correct-box {
+        background: #F0FDF4;
+        border: 1.5px solid #86EFAC;
+        border-radius: 14px;
+        padding: 16px 20px;
+        margin-bottom: 16px;
+    }
+    .wrong-box {
+        background: #FEF2F2;
+        border: 1.5px solid #FCA5A5;
+        border-radius: 14px;
+        padding: 16px 20px;
+        margin-bottom: 16px;
+    }
+
     div[data-testid="stExpander"] { 
         direction: rtl; 
         text-align: right; 
+    }
+
+    /* تحسين شكل الأزرار */
+    .stButton > button {
+        border-radius: 12px !important;
+        font-weight: 700 !important;
+        transition: all 0.2s ease !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -95,7 +177,7 @@ def convert_pdf_to_real_images(pdf_bytes, max_pages=6):
     return images_payload, total_pages
 
 # ========================================================
-# 🧹 تنظيف واستخراج كائن الـ JSON بأمان
+# 🧹 تنظيف واستخراج كائن الـ JSON بأمان تام
 # ========================================================
 def clean_and_parse_json(text):
     if not text:
@@ -122,10 +204,7 @@ def clean_and_parse_json(text):
         raise ValueError(f"تعذر استخراج كائن JSON صالح من الرد: {clean_text[:120]}")
 
 # ========================================================
-# 🚀 دالة توليد الاختبار (عربية فصحى مع الرموز العلمية فقط)
-# ========================================================
-# ========================================================
-# 🚀 دالة توليد الاختبار (مع نظام التبديل الذكي التلقائي)
+# 🚀 دالة توليد الاختبار (عربية فصحى مع نظام التبديل الذكي)
 # ========================================================
 def generate_quiz_from_pdf(pdf_bytes, subject, title, num_q, diff, allow_tf, make_summary):
     images_content, total_pages = convert_pdf_to_real_images(pdf_bytes, max_pages=6)
@@ -140,23 +219,26 @@ def generate_quiz_from_pdf(pdf_bytes, subject, title, num_q, diff, allow_tf, mak
 أنت موجه تربوي وخبير امتحانات متخصص في مادة ({subject}).
 أمامك صور صفحات الدرس المرفقة لدرس: ({title}) وعددها ({total_pages}) صفحة.
 
-قواعد التغطية واللغة:
-1. وزّع الأسئلة بتوازن على محتوى الصفحات المعروضة كاملة (البداية، الوسط، والخاتمة).
-2. استخرج المفاهيم والمعلومات والجداول بدقة بمستوى صعوبة ({diff}).
-3. لغة الاختبار هي اللغة العربية الفصحى حصراً، مع السماح بالرموز العلمية العالمية التي ليس لها بديل عربي فقط (مثل: DNA, RNA, Bb, F1).
-4. نمط الأسئلة: {types_desc}.
-5. إذا كان make_summary = {make_summary}، اكتب ملخصاً شاملاً لأهم مفاهيم الدرس في حقل summary باللغة العربية في 4 نقاط.
+⚠️ قواعد اللغة والتنسيق الصارمة جداً:
+1. لغة الاختبار هي اللغة العربية الفصحى حصراً بنسبة 100%.
+2. يُمنع منعاً باتاً كتابة أي جمل أو عبارات أو كلمات باللغة الإنجليزية.
+3. الاستثناء الوحيد المسموح به بالإنجليزية هو "الضرورة القصوى فقط" للرموز العلمية العالمية التي ليس لها بديل عربي نهائياً (مثل الرموز الوراثية: Bb, F1, P، أو اختصارات الأحماض: DNA, RNA, ATP). عدا ذلك، كل شيء يجب أن يكون عربياً خالصاً.
 
-أرجع كائن JSON حصرياً وصالحاً بالهيكل التالي:
+المطلوب:
+1. استخرج بالضبط {num_q} أسئلة بمستوى صعوبة ({diff}) من صلب الصفحات المعروضة لقياس الفهم الحقيقي.
+2. نمط الأسئلة: {types_desc}.
+3. إذا كان make_summary = {make_summary}، اكتب ملخصاً شاملاً لأهم مفاهيم الدرس في حقل summary باللغة العربية الفصحى في 4 نقاط رئيسية.
+
+أرجع كائن JSON حصرياً وصالحاً 100% بالهيكل التالي:
 {{
-  "summary": "ملخص شامل لأهم نقاط الدرس...",
+  "summary": "نص الملخص باللغة العربية الفصحى...",
   "questions": [
     {{
       "id": 1,
-      "question": "نص السؤال الدقيق من صلب محتوى الدرس؟",
+      "question": "نص السؤال بالعربية الفصحى فقط؟",
       "options": ["الخيار الأول", "الخيار الثاني", "الخيار الثالث", "الخيار الرابع"],
       "correct_index": 0,
-      "explanation": "شرح علمي مستند إلى صفحات الدرس لسبب صحة الخيار"
+      "explanation": "شرح الإجابة باللغة العربية الفصحى"
     }}
   ]
 }}
@@ -165,7 +247,6 @@ def generate_quiz_from_pdf(pdf_bytes, subject, title, num_q, diff, allow_tf, mak
 
     user_payload = [{"type": "text", "text": prompt_text}] + images_content
 
-    # قائمة النماذج المجانية للتبديل التلقائي الفوري في حال انشغال أي سيرفر
     candidate_models = [
         "openrouter/free",
         "meta-llama/llama-3.2-11b-vision-instruct:free",
@@ -188,7 +269,6 @@ def generate_quiz_from_pdf(pdf_bytes, subject, title, num_q, diff, allow_tf, mak
                 return clean_and_parse_json(raw_text)
         except Exception as e:
             last_error = e
-            # إذا واجه ضغط 429 أو موديل غير متاح 404، ينتقل للموديل التالي فوراً
             if "429" in str(e) or "404" in str(e) or "rate-limited" in str(e):
                 continue
             raise e
@@ -196,7 +276,7 @@ def generate_quiz_from_pdf(pdf_bytes, subject, title, num_q, diff, allow_tf, mak
     raise last_error
 
 # ========================================================
-# ⚡ دوال التحليلات والمعلم الذكي
+# ⚡ دوال التحليلات والمعلم الذكي (OpenRouter الموحد)
 # ========================================================
 def analyze_class_submissions(subject, submissions_data):
     prompt = f"""
@@ -214,7 +294,7 @@ def analyze_class_submissions(subject, submissions_data):
 
 def ask_ai_tutor(question, student_ans, correct_ans, explanation):
     prompt = f"""
-أنت معلم خصوصي ودود ومشجع وصبور. اشرح للطالب باللغة العربية الفصحى حصراً وبأسلوب مبسط ومشجع لماذا إجابته كانت غير دقيقة، وكيف يفهم الإجابة الصحيحة بسهولة:
+أنت معلم خصوصي ودود ومشجع وصبور. اشرح للطالب باللغة العربية الفصحى حصراً وبأسلوب مبسط ومشجع لماذا إجابته كانت غير دقيقة، وكيف يفهم الإجابة الصحيحة بسهولة ودون تعقيد:
 - السؤال: {question}
 - إجابة الطالب: {student_ans}
 - الإجابة الصحيحة: {correct_ans}
@@ -320,7 +400,7 @@ if role == "👨‍🏫 بوابة المعلم":
                     except Exception as e:
                         st.error(f"حدث خطأ أثناء المعالجة: {e}")
 
-        # --- التبويب الجديد 2: تحرير وتعديل وإضافة أسئلة يدوياً ---
+        # --- التبويب 2: تحرير وتعديل وإضافة أسئلة يدوياً ---
         with tab_edit:
             st.subheader(f"✏️ تحرير وإضافة أسئلة لاختبارات مادة ({subject})")
             quizzes_list_res = supabase.table("quizzes").select("id, lesson_title, quiz_code, questions").eq("subject", subject).order("created_at", desc=True).execute()
@@ -335,7 +415,6 @@ if role == "👨‍🏫 بوابة المعلم":
                 st.markdown(f"### 📋 الأسئلة الحالية (العدد: {len(current_qs)} سؤال)")
                 
                 updated_qs = []
-                question_deleted = False
 
                 for q_idx, q in enumerate(current_qs):
                     with st.expander(f"السؤال {q_idx + 1}: {q.get('question', '')[:60]}..."):
@@ -548,19 +627,28 @@ elif role == "👨‍🎓 بوابة الطالب":
             if result_state_key not in st.session_state:
                 user_choices = {}
                 with st.form("exam_form"):
+                    total_qs = len(active_quiz)
                     for idx, q in enumerate(active_quiz):
-                        st.markdown(f"**س{idx+1}: {q['question']}**")
+                        # عرض السؤال داخل بطاقة تفاعلية عصرية
+                        st.markdown(f"""
+                        <div class="quiz-card">
+                            <span class="q-badge">السؤال {idx + 1} من {total_qs}</span>
+                            <h3 style="margin-top: 4px; color: #1E293B; font-size: 1.15rem; line-height: 1.6;">{q['question']}</h3>
+                        </div>
+                        """, unsafe_allow_html=True)
+
                         opts_text = [o[1] for o in q["options"]]
                         user_choices[idx] = st.radio(
-                            "اختر الإجابة:",
+                            "اختر الإجابة المناسبة:",
                             options=list(range(len(opts_text))),
                             format_func=lambda x, texts=opts_text: texts[x],
                             key=f"field_{target_quiz['id']}_{idx}",
-                            index=None
+                            index=None,
+                            label_visibility="collapsed"
                         )
                         st.write("")
 
-                    finish_btn = st.form_submit_button("📩 إنهاء وتسليم الإجابات", type="primary")
+                    finish_btn = st.form_submit_button("📩 إنهاء الاختبار واعتماد النتيجة", type="primary", use_container_width=True)
 
                 if finish_btn:
                     if any(c is None for c in user_choices.values()):
@@ -608,32 +696,56 @@ elif role == "👨‍🎓 بوابة الطالب":
             if result_state_key in st.session_state:
                 res_data = st.session_state[result_state_key]
                 st.balloons()
-                st.success(f"أحسنت يا {student_name}! نتيجتك هي: {res_data['score']} من {res_data['total']}")
 
-                st.subheader("🔍 مراجعة الإجابات والتفسيرات:")
+                score = res_data['score']
+                total = res_data['total']
+                pct = (score / total) * 100
+
+                # درع تفاعلي للنتيجة مع وسام
+                badge_title = "🏆 عبقري ومتميز!" if pct >= 85 else ("🌟 بطل، نتيجة رائعة!" if pct >= 65 else "💪 بداية موفقة، راجع أخطاءك لتتفوق!")
+                badge_color = "#10B981" if pct >= 65 else "#F59E0B"
+
+                st.markdown(f"""
+                <div style="background: white; border-radius: 20px; padding: 30px; text-align: center; border: 1.5px solid #E2E8F0; box-shadow: 0 10px 30px rgba(0,0,0,0.06); margin-bottom: 25px;">
+                    <div style="font-size: 2.5rem; margin-bottom: 5px;">{badge_title.split()[0]}</div>
+                    <h2 style="color: #1E293B; margin: 0; font-weight: 800;">{badge_title}</h2>
+                    <p style="color: #64748B; font-size: 1.1rem; margin-top: 6px;">أحسنت يا <b>{student_name}</b>، إليك تفاصيل نتيجتك:</p>
+                    <div style="display: inline-block; background: {badge_color}15; color: {badge_color}; padding: 10px 28px; border-radius: 30px; font-weight: 900; font-size: 1.6rem; border: 1.5px solid {badge_color};">
+                        {score} من {total} ({pct:.0f}%)
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+                st.markdown("### 🔍 مراجعة الأسئلة وتفسير الإجابات:")
                 for idx, item in enumerate(res_data["details"]):
-                    with st.container():
-                        if item["is_correct"]:
-                            st.markdown(f"✅ **س{idx+1}: {item['question']}**")
-                            st.write(f"- إجابتك: {item['chosen']}")
-                        else:
-                            st.markdown(f"❌ **س{idx+1}: {item['question']}**")
-                            st.write(f"- إجابتك: {item['chosen']}")
-                            st.write(f"- الإجابة الصحيحة: {item['correct']}")
+                    if item["is_correct"]:
+                        st.markdown(f"""
+                        <div class="correct-box">
+                            <span style="color: #15803D; font-weight: 800; font-size: 1.05rem;">✅ السؤال {idx+1}: {item['question']}</span>
+                            <div style="margin-top: 8px; color: #166534;"><b>إجابتك الصحيحة:</b> {item['chosen']}</div>
+                            <div style="margin-top: 6px; font-size: 0.9rem; color: #15803D;">💡 <b>التفسير:</b> {item['explanation']}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"""
+                        <div class="wrong-box">
+                            <span style="color: #B91C1C; font-weight: 800; font-size: 1.05rem;">❌ السؤال {idx+1}: {item['question']}</span>
+                            <div style="margin-top: 8px; color: #991B1B;"><b>إجابتك:</b> {item['chosen']}</div>
+                            <div style="margin-top: 4px; color: #15803D;"><b>الإجابة الصحيحة النموذجية:</b> {item['correct']}</div>
+                            <div style="margin-top: 6px; font-size: 0.9rem; color: #B91C1C;">💡 <b>التفسير:</b> {item['explanation']}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
 
-                        st.caption(f"💡 التفسير: {item['explanation']}")
+                        # زر المعلم الذكي بتصميم جذاب
+                        tutor_key = f"tutor_ans_{target_quiz['id']}_{idx}"
+                        if st.button(f"🤖 اطلب من المعلم الذكي توضيح هذا الخطأ", key=f"tutor_btn_{target_quiz['id']}_{idx}"):
+                            with st.spinner("المعلم الذكي يجهز لك الشرح المبسط..."):
+                                explanation_text = ask_ai_tutor(
+                                    item["question"], item["chosen"], item["correct"], item["explanation"]
+                                )
+                                st.session_state[tutor_key] = explanation_text
 
-                        # المعلم الذكي الموحد عبر OpenRouter
-                        if not item["is_correct"]:
-                            tutor_key = f"tutor_ans_{target_quiz['id']}_{idx}"
-                            if st.button(f"🤖 اطلب من المعلم الذكي شرح هذا السؤال", key=f"tutor_btn_{target_quiz['id']}_{idx}"):
-                                with st.spinner("المعلم الذكي يكتب لك الشرح الآن..."):
-                                    explanation_text = ask_ai_tutor(
-                                        item["question"], item["chosen"], item["correct"], item["explanation"]
-                                    )
-                                    st.session_state[tutor_key] = explanation_text
+                        if tutor_key in st.session_state:
+                            st.info(f"👨‍🏫 **المعلم الذكي:**\n\n{st.session_state[tutor_key]}")
 
-                            if tutor_key in st.session_state:
-                                st.info(st.session_state[tutor_key])
-
-                        st.write("---")
+                    st.write("")
