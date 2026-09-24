@@ -2,6 +2,7 @@ import streamlit as st
 from openai import OpenAI
 from groq import Groq
 from supabase import create_client, Client
+import fitz  # PyMuPDF لتحويل الصفحات لصور حقيقية
 import base64
 import json
 import random
@@ -10,15 +11,10 @@ import pandas as pd
 import re
 
 # ========================================================
-# 🔑 إعدادات الربط والمفاتيح المعتمدة
+# 🔑 إعدادات المفاتيح الشغالة والمفعلة بحسابك
 # ========================================================
-# 1. مفتاح OpenRouter النشط الخاص بك
 OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", "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")
-
-# 2. مفتاح Groq للمعلم الذكي الخاص بالطلاب
 GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", "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")
-
-# 3. مفاتيح قاعدة البيانات Supabase
 SUPABASE_URL = st.secrets.get("SUPABASE_URL")
 SUPABASE_KEY = st.secrets.get("SUPABASE_KEY")
 
@@ -26,7 +22,6 @@ SUPABASE_KEY = st.secrets.get("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 groq_client = Groq(api_key=GROQ_API_KEY)
 
-# عميل OpenRouter الرسمي
 openrouter_client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=OPENROUTER_API_KEY,
@@ -62,22 +57,40 @@ def generate_quiz_code(subject):
     return f"{prefix}-{code_chars}"
 
 # ========================================================
+# 👁️ تحويل صفحات الـ PDF إلى صور JPEG حقيقية
+# ========================================================
+def convert_pdf_to_real_images(pdf_bytes, max_pages=3):
+    """تحويل صفحات الـ PDF إلى صور حقيقية يقبلها الذكاء الاصطناعي كـ Vision"""
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    images_payload = []
+    
+    for page_num in range(min(len(doc), max_pages)):
+        page = doc[page_num]
+        pix = page.get_pixmap(dpi=100) # دقة واضحة وخفيفة
+        img_bytes = pix.tobytes("jpeg", jpg_quality=75)
+        b64_img = base64.b64encode(img_bytes).decode("utf-8")
+        images_payload.append({
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:image/jpeg;base64,{b64_img}"
+            }
+        })
+        
+    return images_payload
+
+# ========================================================
 # 🧹 تنظيف واستخراج كائن الـ JSON بأمان
 # ========================================================
 def clean_and_parse_json(text):
     if not text:
         raise ValueError("وصل رد فارغ من الموديل.")
     
-    # 1. إزالة وسوم التفكير <think> ... </think>
     clean_text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
     clean_text = clean_text.strip()
-    
-    # 2. إزالة علامات الماركداون
     clean_text = re.sub(r"^```(?:json)?\s*", "", clean_text, flags=re.IGNORECASE)
     clean_text = re.sub(r"\s*```$", "", clean_text)
     clean_text = clean_text.strip()
     
-    # 3. استخراج كائن الـ JSON الحقيقي بين { و }
     match = re.search(r"(\{.*\})", clean_text, re.DOTALL)
     if match:
         try:
@@ -91,22 +104,25 @@ def clean_and_parse_json(text):
         raise ValueError(f"تعذر استخراج كائن JSON صالح من الرد: {clean_text[:120]}")
 
 # ========================================================
-# 🚀 دالة توليد الاختبار (مُعرّف فيها b64_pdf بشكل قطعي)
+# 🚀 دالة توليد الاختبار (إرسال صور حقيقية 100%)
 # ========================================================
 def generate_quiz_from_pdf(pdf_bytes, subject, title, num_q, diff, allow_tf, make_summary):
-    # تعريف المتغير بشكل مباشر في أول الدالة
-    b64_pdf = base64.b64encode(pdf_bytes).decode("utf-8")
+    # 1. تحويل الصفحات لصور حقيقية يقبلها السيرفر
+    images_content = convert_pdf_to_real_images(pdf_bytes, max_pages=3)
     
+    if not images_content:
+        raise ValueError("ملف الـ PDF فارغ.")
+
     types_desc = "جميع الأسئلة اختيار من متعدد بـ 4 خيارات (إجابة واحدة صحيحة، و3 خيارات مشتتة ذكية ومتقاربة)."
     if allow_tf:
         types_desc += " مع إمكانية تضمين أسئلة صح أو خطأ بخيارين: 1) صح، 2) خطأ."
 
     prompt_text = f"""
 أنت موجه تربوي وخبير امتحانات متخصص في مادة ({subject}).
-أمامك ملف الـ PDF المرفق لدرس: ({title}).
+أمامك صور صفحات الدرس المرفقة لدرس: ({title}).
 
 المعايير التربوية:
-1. اقرأ محتوى المستند بدقة واستخرج المفاهيم والمعلومات من صلبه.
+1. انظر بعناية لصور الصفحات واقرأ النصوص والجداول بدقة.
 2. اصنع بالضبط {num_q} أسئلة بمستوى صعوبة ({diff}) تقيس الفهم الحقيقي والتحليل وابتعد عن الأسئلة السطحية.
 3. نمط الأسئلة: {types_desc}.
 4. إذا كان make_summary = {make_summary}، اكتب ملخصاً في حقل summary يشرح جوهر الدرس في 4 نقاط رئيسية، وإلا اتركه فارغاً.
@@ -117,7 +133,7 @@ def generate_quiz_from_pdf(pdf_bytes, subject, title, num_q, diff, allow_tf, mak
   "questions": [
     {{
       "id": 1,
-      "question": "نص السؤال الدقيق من صلب الدرس؟",
+      "question": "نص السؤال الدقيق من واقع محتوى الدرس؟",
       "options": ["الخيار الأول", "الخيار الثاني", "الخيار الثالث", "الخيار الرابع"],
       "correct_index": 0,
       "explanation": "شرح علمي مستند إلى صفحات الدرس لسبب صحة هذا الخيار واستبعاد الباقي"
@@ -127,24 +143,19 @@ def generate_quiz_from_pdf(pdf_bytes, subject, title, num_q, diff, allow_tf, mak
 ملاحظة: correct_index هو رقم الفهرس للإجابة الصحيحة (0 للخيار الأول، 1 للثاني، 2 للثالث، 3 للرابع).
 """
 
+    # دمج نص التوجيه مع صور الصفحات الحقيقية
+    user_payload = [{"type": "text", "text": prompt_text}] + images_content
+
     response = openrouter_client.chat.completions.create(
         model="openrouter/free",
         messages=[
             {
                 "role": "system",
-                "content": "You are a strict JSON generator. You must start your response directly with { and output ONLY a valid JSON object. Do not include any introduction, thought process, or commentary outside the JSON."
+                "content": "You are a strict JSON generator. Start directly with { and output ONLY valid JSON without any thinking, intro or outro."
             },
             {
                 "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt_text},
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:application/pdf;base64,{b64_pdf}"
-                        }
-                    }
-                ]
+                "content": user_payload
             }
         ],
         response_format={"type": "json_object"},
@@ -152,11 +163,10 @@ def generate_quiz_from_pdf(pdf_bytes, subject, title, num_q, diff, allow_tf, mak
         max_tokens=4000
     )
 
-    if hasattr(response, "choices") and response.choices:
-        raw_text = response.choices[0].message.content
-    else:
-        raw_text = str(response)
+    if not response.choices or not response.choices[0].message.content:
+        raise ValueError("لم يرجع السيرفر إجابة، يرجى المحاولة مرة أخرى.")
 
+    raw_text = response.choices[0].message.content
     return clean_and_parse_json(raw_text)
 
 # ========================================================
@@ -233,7 +243,7 @@ if role == "👨‍🏫 بوابة المعلم":
         ])
 
         with tab1:
-            st.subheader("🤖 توليد اختبار دقيق بقراءة مباشرة للـ PDF")
+            st.subheader("🤖 توليد اختبار دقيق برؤية بصرية حقيقية للـ PDF")
             c_title, c_num, c_diff = st.columns([2, 1, 1])
             with c_title:
                 quiz_title = st.text_input("عنوان الدرس / الاختبار:", placeholder="مثال: علم الوراثة المندلية")
@@ -260,9 +270,8 @@ if role == "👨‍🏫 بوابة المعلم":
             pdf_file = st.file_uploader("ارفع ملف الدرس بصيغة (PDF):", type=["pdf"])
 
             if pdf_file and quiz_title and st.button("🚀 توليد الاختبار ونشره", type="primary"):
-                with st.spinner("الذكاء الاصطناعي يقوم بقراءة الـ PDF وصياغة الأسئلة بدقة..."):
+                with st.spinner("جاري قراءة صفحات الـ PDF بصرياً كصور حقيقية وتوليد الأسئلة..."):
                     try:
-                        # استدعاء الدالة الموحدة
                         ai_data = generate_quiz_from_pdf(
                             pdf_file.getvalue(), subject, quiz_title, num_q, diff, allow_tf, enable_summary
                         )
