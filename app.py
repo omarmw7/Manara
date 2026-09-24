@@ -610,7 +610,7 @@ elif role == "👨‍🎓 بوابة الطالب":
             active_quiz = st.session_state[session_quiz_key]
             result_state_key = f"result_{target_quiz['id']}_{student_name.strip()}"
 
-            if result_state_key in st.session_state:
+           if result_state_key in st.session_state:
                 res_data = st.session_state[result_state_key]
                 st.balloons()
 
@@ -635,6 +635,7 @@ elif role == "👨‍🎓 بوابة الطالب":
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
+               
                         opts_text = [o[1] for o in q["options"]]
                         user_choices[idx] = st.radio(
                             "اختر الإجابة المناسبة:",
