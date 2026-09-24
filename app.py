@@ -106,8 +106,11 @@ def clean_and_parse_json(text):
 # ========================================================
 # 🚀 دالة توليد الاختبار (إرسال صور حقيقية 100%)
 # ========================================================
+# ========================================================
+# 🚀 دالة توليد الاختبار (مضبوطة بالعربية الفصحى 100%)
+# ========================================================
 def generate_quiz_from_pdf(pdf_bytes, subject, title, num_q, diff, allow_tf, make_summary):
-    # 1. تحويل الصفحات لصور حقيقية يقبلها السيرفر
+    # تحويل الصفحات لصور حقيقية
     images_content = convert_pdf_to_real_images(pdf_bytes, max_pages=3)
     
     if not images_content:
@@ -117,48 +120,57 @@ def generate_quiz_from_pdf(pdf_bytes, subject, title, num_q, diff, allow_tf, mak
     if allow_tf:
         types_desc += " مع إمكانية تضمين أسئلة صح أو خطأ بخيارين: 1) صح، 2) خطأ."
 
+    # 1. أمر النظام الإجباري باللغة العربية
+    system_instruction = (
+        "You are an educational assessment expert. All generated content, questions, options, summaries, and explanations "
+        "MUST BE STRICTLY AND EXCLUSIVELY WRITTEN IN FORMAL ARABIC (اللغة العربية الفصحى). "
+        "Do not use English in any question or option. Output valid JSON only."
+    )
+
+    # 2. نص التوجيه الصارم لفرض اللغة العربية
     prompt_text = f"""
 أنت موجه تربوي وخبير امتحانات متخصص في مادة ({subject}).
 أمامك صور صفحات الدرس المرفقة لدرس: ({title}).
 
-المعايير التربوية:
-1. انظر بعناية لصور الصفحات واقرأ النصوص والجداول بدقة.
-2. اصنع بالضبط {num_q} أسئلة بمستوى صعوبة ({diff}) تقيس الفهم الحقيقي والتحليل وابتعد عن الأسئلة السطحية.
-3. نمط الأسئلة: {types_desc}.
-4. إذا كان make_summary = {make_summary}، اكتب ملخصاً في حقل summary يشرح جوهر الدرس في 4 نقاط رئيسية، وإلا اتركه فارغاً.
+⚠️ شرط إلزامي وحاسم:
+يجب أن تكون جميع الأسئلة، والخيارات، والشروحات، والملخص مكتوبة بـ (اللغة العربية الفصحى حصراً 100%)، ويُمنع منعاً باتاً كتابة أي كلمة بالإنجليزي.
 
-أرجع كائن JSON حصرياً وصالحاً 100% بالهيكل التالي:
+المعايير التربوية:
+1. انظر بعناية لصور الصفحات واقرأ النصوص والجداول بدقة من صلب الدرس.
+2. اصنع بالضبط {num_q} أسئلة بمستوى صعوبة ({diff}) تقيس الفهم والتحليل وليس الحفظ السطحي.
+3. نمط الأسئلة: {types_desc}.
+4. إذا كان make_summary = {make_summary}، اكتب ملخصاً في حقل summary باللغة العربية الفصحى يشرح جوهر الدرس في 4 نقاط رئيسية، وإلا اتركه فارغاً.
+
+أرجع كائن JSON حصرياً وصالحاً 100% بالهيكل التالي فقط:
 {{
-  "summary": "نص الملخص التمهيدي هنا...",
+  "summary": "نص الملخص باللغة العربية...",
   "questions": [
     {{
       "id": 1,
-      "question": "نص السؤال الدقيق من واقع محتوى الدرس؟",
-      "options": ["الخيار الأول", "الخيار الثاني", "الخيار الثالث", "الخيار الرابع"],
+      "question": "نص السؤال الدقيق باللغة العربية الفصحى؟",
+      "options": ["الخيار الأول بالعربي", "الخيار الثاني بالعربي", "الخيار الثالث بالعربي", "الخيار الرابع بالعربي"],
       "correct_index": 0,
-      "explanation": "شرح علمي مستند إلى صفحات الدرس لسبب صحة هذا الخيار واستبعاد الباقي"
+      "explanation": "شرح علمي باللغة العربية لسبب صحة الخيار واستبعاد الباقي"
     }}
   ]
 }}
 ملاحظة: correct_index هو رقم الفهرس للإجابة الصحيحة (0 للخيار الأول، 1 للثاني، 2 للثالث، 3 للرابع).
 """
 
-    # دمج نص التوجيه مع صور الصفحات الحقيقية
     user_payload = [{"type": "text", "text": prompt_text}] + images_content
 
     response = openrouter_client.chat.completions.create(
-        model="openrouter/free",
+        model="inclusionai/ling-3.0-flash-vl:free",
         messages=[
             {
                 "role": "system",
-                "content": "You are a strict JSON generator. Start directly with { and output ONLY valid JSON without any thinking, intro or outro."
+                "content": system_instruction
             },
             {
                 "role": "user",
                 "content": user_payload
             }
         ],
-        response_format={"type": "json_object"},
         temperature=0.2,
         max_tokens=4000
     )
@@ -168,7 +180,6 @@ def generate_quiz_from_pdf(pdf_bytes, subject, title, num_q, diff, allow_tf, mak
 
     raw_text = response.choices[0].message.content
     return clean_and_parse_json(raw_text)
-
 # ========================================================
 # ⚡ دوال الطلاب والتحليلات عبر Groq
 # ========================================================
