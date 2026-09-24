@@ -163,7 +163,7 @@ def generate_quiz_from_pdf(pdf_bytes, subject, title, num_q, diff, allow_tf, mak
     user_payload = [{"type": "text", "text": prompt_text}] + images_content
 
     response = openrouter_client.chat.completions.create(
-        model="google/gemini-2.0-flash-exp:free",
+        model="google/gemma-4-31b-it:free",  # الموديل المعتمد والمتاح حالياً
         messages=[
             {"role": "user", "content": user_payload}
         ],
