@@ -36,6 +36,33 @@ st.set_page_config(
 
 st.markdown("""
 <style>
+    .stApp { 
+        direction: rtl; 
+        text-align: right; 
+    }
+    /* جعل النصوص العربية تدعم الكلمات والرموز الإنجليزية بانسيابية دون انقلاب */
+    p, span, label, h1, h2, h3, h4, div[data-testid="stMarkdownContainer"] p { 
+        direction: rtl !important; 
+        text-align: right !important; 
+        unicode-bidi: isolate !important;
+    }
+    /* تنسيق خيارات الراديو لتكون مرتبة */
+    .stRadio label { 
+        direction: rtl !important; 
+        text-align: right !important; 
+        display: flex !important;
+        align-items: center !important;
+        gap: 8px !important;
+    }
+    div[data-testid="stExpander"] { 
+        direction: rtl; 
+        text-align: right; 
+    }
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown("""
+<style>
     .stApp { direction: rtl; text-align: right; }
     p, div, span, h1, h2, h3, h4, label { text-align: right !important; }
     .stRadio label { direction: rtl !important; text-align: right !important; }
