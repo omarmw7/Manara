@@ -61,14 +61,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("""
-<style>
-    .stApp { direction: rtl; text-align: right; }
-    p, div, span, h1, h2, h3, h4, label { text-align: right !important; }
-    .stRadio label { direction: rtl !important; text-align: right !important; }
-    div[data-testid="stExpander"] { direction: rtl; text-align: right; }
-</style>
-""", unsafe_allow_html=True)
 
 # بيانات المعلمين
 TEACHERS_DB = {
