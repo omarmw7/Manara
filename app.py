@@ -90,27 +90,24 @@ def clean_and_parse_json(text):
     clean_text = re.sub(r"^```(?:json)?\s*", "", clean_text, flags=re.IGNORECASE)
     clean_text = re.sub(r"\s*```$", "", clean_text)
     clean_text = clean_text.strip()
-    
+
+    # محاولة فك الـ JSON مباشرة
     match = re.search(r"(\{.*\})", clean_text, re.DOTALL)
-    if match:
-        try:
-            return json.loads(match.group(1))
-        except Exception:
-            pass
-            
+    candidate = match.group(1) if match else clean_text
+    
     try:
-        return json.loads(clean_text)
+        return json.loads(candidate)
     except Exception:
+        # إذا انقطع الرد قبل إغلاق الأقواس، نقوم بإغلاقها برمجياً
+        if not candidate.endswith("}"):
+            for fix in ["}", "]}", "]}}", "\"}]}"]]:
+                try:
+                    return json.loads(candidate + fix)
+                except Exception:
+                    pass
         raise ValueError(f"تعذر استخراج كائن JSON صالح من الرد: {clean_text[:120]}")
 
-# ========================================================
-# 🚀 دالة توليد الاختبار (إرسال صور حقيقية 100%)
-# ========================================================
-# ========================================================
-# 🚀 دالة توليد الاختبار (مضبوطة بالعربية الفصحى 100%)
-# ========================================================
 def generate_quiz_from_pdf(pdf_bytes, subject, title, num_q, diff, allow_tf, make_summary):
-    # 1. تجهيز صور الصفحات كالسابق تماماً
     images_content = convert_pdf_to_real_images(pdf_bytes, max_pages=3)
     if not images_content:
         raise ValueError("ملف الـ PDF فارغ.")
@@ -119,12 +116,11 @@ def generate_quiz_from_pdf(pdf_bytes, subject, title, num_q, diff, allow_tf, mak
     if allow_tf:
         types_desc += " مع إمكانية تضمين أسئلة صح أو خطأ بخيارين: 1) صح، 2) خطأ."
 
-    # 2. نص توجيه بسيط ومباشر يفرض العربي بدون تعقيد
     prompt_text = f"""
 أنت موجه تربوي في مادة ({subject}).
 اقرأ صور صفحات الدرس لدرس: ({title}).
 
-ملاحظة هامة جداً: اكتب كل الأسئلة والخيارات والشروحات باللغة العربية الفصحى حصراً. لا تستخدم اللغة الإنجليزية.
+ملاحظة هامة جداً: اكتب كل الأسئلة والخيارات والشروحات باللغة العربية الفصحى فقط.
 
 المطلوب:
 1. استخرج {num_q} أسئلة بمستوى ({diff}) من صلب الصفحات.
@@ -148,13 +144,13 @@ def generate_quiz_from_pdf(pdf_bytes, subject, title, num_q, diff, allow_tf, mak
 
     user_payload = [{"type": "text", "text": prompt_text}] + images_content
 
-    # 3. نفس الاستدعاء البسيط اللي اشتغل معك بدون فلسفة زائدة
     response = openrouter_client.chat.completions.create(
         model="openrouter/free",
         messages=[
             {"role": "user", "content": user_payload}
         ],
-        temperature=0.2
+        temperature=0.2,
+        max_tokens=4500  # <--- مساحة كتابة ضخمة تمنع انقطاع النص
     )
 
     if not response.choices or not response.choices[0].message.content:
