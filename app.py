@@ -588,7 +588,7 @@ elif role == "👨‍🎓 بوابة الطالب":
 
         student_name = st.text_input("أدخل اسمك الكامل للبدء:")
 
-        if student_name.strip():if student_name.strip():
+        if student_name.strip():
             session_quiz_key = f"quiz_data_{target_quiz['id']}"
             if session_quiz_key not in st.session_state:
                 raw_qs = target_quiz["questions"]
