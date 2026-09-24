@@ -2,7 +2,7 @@ import streamlit as st
 from openai import OpenAI
 from groq import Groq
 from supabase import create_client, Client
-import fitz  # PyMuPDF لتحويل الصفحات لصور حقيقية
+import fitz  # PyMuPDF
 import base64
 import json
 import random
@@ -11,7 +11,7 @@ import pandas as pd
 import re
 
 # ========================================================
-# 🔑 إعدادات المفاتيح الشغالة والمفعلة بحسابك
+# 🔑 إعدادات المفاتيح المعتمدة والفعّالة
 # ========================================================
 OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", "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")
 GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", "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")
@@ -40,13 +40,11 @@ st.markdown("""
         direction: rtl; 
         text-align: right; 
     }
-    /* جعل النصوص العربية تدعم الكلمات والرموز الإنجليزية بانسيابية دون انقلاب */
     p, span, label, h1, h2, h3, h4, div[data-testid="stMarkdownContainer"] p { 
         direction: rtl !important; 
         text-align: right !important; 
         unicode-bidi: isolate !important;
     }
-    /* تنسيق خيارات الراديو لتكون مرتبة */
     .stRadio label { 
         direction: rtl !important; 
         text-align: right !important; 
@@ -60,7 +58,6 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
-
 
 # بيانات المعلمين
 TEACHERS_DB = {
@@ -76,17 +73,17 @@ def generate_quiz_code(subject):
     return f"{prefix}-{code_chars}"
 
 # ========================================================
-# 👁️ تحويل صفحات الـ PDF إلى صور JPEG حقيقية
+# 👁️ تحويل صفحات الـ PDF إلى صور عالية الدقة لكامل الدرس
 # ========================================================
-def convert_pdf_to_real_images(pdf_bytes, max_pages=3):
-    """تحويل صفحات الـ PDF إلى صور حقيقية يقبلها الذكاء الاصطناعي كـ Vision"""
+def convert_pdf_to_real_images(pdf_bytes, max_pages=6):
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     images_payload = []
     
-    for page_num in range(min(len(doc), max_pages)):
+    total_pages = min(len(doc), max_pages)
+    for page_num in range(total_pages):
         page = doc[page_num]
-        pix = page.get_pixmap(dpi=100) # دقة واضحة وخفيفة
-        img_bytes = pix.tobytes("jpeg", jpg_quality=75)
+        pix = page.get_pixmap(dpi=110)
+        img_bytes = pix.tobytes("jpeg", jpg_quality=80)
         b64_img = base64.b64encode(img_bytes).decode("utf-8")
         images_payload.append({
             "type": "image_url",
@@ -95,7 +92,7 @@ def convert_pdf_to_real_images(pdf_bytes, max_pages=3):
             }
         })
         
-    return images_payload
+    return images_payload, total_pages
 
 # ========================================================
 # 🧹 تنظيف واستخراج كائن الـ JSON بأمان
@@ -116,7 +113,6 @@ def clean_and_parse_json(text):
     try:
         return json.loads(candidate)
     except Exception:
-        # إكمال الأقواس بأمان بدون أي أخطاء في السنتاكس
         fixes = ["}", "]}", "]}}", '"}]}']
         for fix in fixes:
             try:
@@ -125,8 +121,11 @@ def clean_and_parse_json(text):
                 pass
         raise ValueError(f"تعذر استخراج كائن JSON صالح من الرد: {clean_text[:120]}")
 
+# ========================================================
+# 🚀 دالة توليد الاختبار (عربية فصحى مع الرموز العلمية فقط)
+# ========================================================
 def generate_quiz_from_pdf(pdf_bytes, subject, title, num_q, diff, allow_tf, make_summary):
-    images_content = convert_pdf_to_real_images(pdf_bytes, max_pages=3)
+    images_content, total_pages = convert_pdf_to_real_images(pdf_bytes, max_pages=6)
     if not images_content:
         raise ValueError("ملف الـ PDF فارغ.")
 
@@ -134,20 +133,19 @@ def generate_quiz_from_pdf(pdf_bytes, subject, title, num_q, diff, allow_tf, mak
     if allow_tf:
         types_desc += " مع إمكانية تضمين أسئلة صح أو خطأ بخيارين: 1) صح، 2) خطأ."
 
-    # توجيه حاسم: اللغة عربية فصحى نقية، والإنجليزي للرموز المستحيلة فقط
     prompt_text = f"""
 أنت موجه تربوي وخبير امتحانات متخصص في مادة ({subject}).
-اقرأ صور صفحات الدرس المرفقة لدرس: ({title}).
+أمامك صور صفحات الدرس المرفقة لدرس: ({title}) وعددها ({total_pages}) صفحة.
 
 ⚠️ قواعد اللغة والتنسيق الصارمة جداً:
 1. لغة الاختبار هي اللغة العربية الفصحى حصراً بنسبة 100%.
 2. يُمنع منعاً باتاً كتابة أي جمل أو عبارات أو كلمات باللغة الإنجليزية.
-3. الاستثناء الوحيد المسموح به بالإنجليزية هو "الضرورة القصوى فقط" للرموز العلمية العالمية التي لا يوجد لها مقابل عربي نهائياً (مثل الرموز الوراثية: Bb, F1, P، أو اختصارات الأحماض: DNA, RNA, ATP). عدا ذلك، كل شيء يجب أن يكون عربياً خالصاً.
+3. الاستثناء الوحيد المسموح به بالإنجليزية هو "الضرورة القصوى فقط" للرموز العلمية العالمية التي ليس لها بديل عربي نهائياً (مثل الرموز الوراثية: Bb, F1, P، أو اختصارات الأحماض: DNA, RNA, ATP). عدا ذلك، كل شيء يجب أن يكون عربياً خالصاً.
 
 المطلوب:
 1. استخرج بالضبط {num_q} أسئلة بمستوى صعوبة ({diff}) من صلب الصفحات لقياس الفهم الحقيقي.
 2. نمط الأسئلة: {types_desc}.
-3. إذا كان make_summary = {make_summary}، اكتب ملخصاً في حقل summary باللغة العربية الفصحى النقية في 4 نقاط رئيسية.
+3. إذا كان make_summary = {make_summary}، اكتب ملخصاً في حقل summary باللغة العربية الفصحى في 4 نقاط رئيسية.
 
 أرجع كائن JSON حصرياً بالهيكل التالي:
 {{
@@ -158,7 +156,7 @@ def generate_quiz_from_pdf(pdf_bytes, subject, title, num_q, diff, allow_tf, mak
       "question": "نص السؤال بالعربية الفصحى فقط؟",
       "options": ["الخيار الأول", "الخيار الثاني", "الخيار الثالث", "الخيار الرابع"],
       "correct_index": 0,
-      "explanation": "شرح الإجابة باللغة العربية الفصحى النقية"
+      "explanation": "شرح الإجابة باللغة العربية الفصحى"
     }}
   ]
 }}
@@ -181,11 +179,9 @@ def generate_quiz_from_pdf(pdf_bytes, subject, title, num_q, diff, allow_tf, mak
 
     raw_text = response.choices[0].message.content
     return clean_and_parse_json(raw_text)
+
 # ========================================================
-# ⚡ دوال الطلاب والتحليلات عبر Groq
-# ========================================================
-# ========================================================
-# ⚡ دوال الطلاب والتحليلات عبر OpenRouter الموحد
+# ⚡ دوال التحليلات والمعلم الذكي
 # ========================================================
 def analyze_class_submissions(subject, submissions_data):
     prompt = f"""
@@ -215,6 +211,7 @@ def ask_ai_tutor(question, student_ans, correct_ans, explanation):
         temperature=0.3
     )
     return completion.choices[0].message.content
+
 # =======================================================
 # الواجهة الرئيسية
 # =======================================================
@@ -248,14 +245,17 @@ if role == "👨‍🏫 بوابة المعلم":
             st.session_state['logged_teacher'] = None
             st.rerun()
 
-        tab1, tab2, tab3 = st.tabs([
-            "✨ إنشاء اختبار ذكي من الـ PDF", 
+        # أربعة تبويبات متكاملة للمعلم
+        tab1, tab_edit, tab2, tab3 = st.tabs([
+            "✨ إنشاء اختبار ذكي من الـ PDF",
+            "✏️ تحرير وإضافة أسئلة يدوياً",
             "📚 بنك الاختبارات المتاحة", 
-            "📊 تحليلات الذكاء الاصطناعي والنتائج"
+            "📊 تحليلات وتقارير الأداء"
         ])
 
+        # --- التبويب 1: إنشاء اختبار بالذكاء الاصطناعي ---
         with tab1:
-            st.subheader("🤖 توليد اختبار دقيق برؤية بصرية حقيقية للـ PDF")
+            st.subheader("🤖 توليد اختبار دقيق بقراءة بصرية لكامل صفحات الدرس")
             c_title, c_num, c_diff = st.columns([2, 1, 1])
             with c_title:
                 quiz_title = st.text_input("عنوان الدرس / الاختبار:", placeholder="مثال: علم الوراثة المندلية")
@@ -282,7 +282,7 @@ if role == "👨‍🏫 بوابة المعلم":
             pdf_file = st.file_uploader("ارفع ملف الدرس بصيغة (PDF):", type=["pdf"])
 
             if pdf_file and quiz_title and st.button("🚀 توليد الاختبار ونشره", type="primary"):
-                with st.spinner("جاري قراءة صفحات الـ PDF بصرياً كصور حقيقية وتوليد الأسئلة..."):
+                with st.spinner("جاري قراءة صفحات الـ PDF وصياغة الأسئلة بدقة بالعربية الفصحى..."):
                     try:
                         ai_data = generate_quiz_from_pdf(
                             pdf_file.getvalue(), subject, quiz_title, num_q, diff, allow_tf, enable_summary
@@ -305,6 +305,111 @@ if role == "👨‍🏫 بوابة المعلم":
                     except Exception as e:
                         st.error(f"حدث خطأ أثناء المعالجة: {e}")
 
+        # --- التبويب الجديد 2: تحرير وتعديل وإضافة أسئلة يدوياً ---
+        with tab_edit:
+            st.subheader(f"✏️ تحرير وإضافة أسئلة لاختبارات مادة ({subject})")
+            quizzes_list_res = supabase.table("quizzes").select("id, lesson_title, quiz_code, questions").eq("subject", subject).order("created_at", desc=True).execute()
+
+            if quizzes_list_res.data:
+                quiz_map = {f"{q['lesson_title']} (كود: {q.get('quiz_code')})": q for q in quizzes_list_res.data}
+                selected_quiz_label = st.selectbox("اختر الاختبار الذي تريد تعديله أو إضافة أسئلة له:", list(quiz_map.keys()))
+                active_edit_quiz = quiz_map[selected_quiz_label]
+                quiz_id = active_edit_quiz["id"]
+                current_qs = list(active_edit_quiz.get("questions", []))
+
+                st.markdown(f"### 📋 الأسئلة الحالية (العدد: {len(current_qs)} سؤال)")
+                
+                updated_qs = []
+                question_deleted = False
+
+                for q_idx, q in enumerate(current_qs):
+                    with st.expander(f"السؤال {q_idx + 1}: {q.get('question', '')[:60]}..."):
+                        edit_q_text = st.text_input(f"نص السؤال {q_idx + 1}:", value=q.get("question", ""), key=f"eq_text_{quiz_id}_{q_idx}")
+                        
+                        opts = q.get("options", ["", "", "", ""])
+                        while len(opts) < 4:
+                            opts.append("")
+
+                        c_opt1, c_opt2 = st.columns(2)
+                        with c_opt1:
+                            opt0 = st.text_input(f"الخيار 1:", value=opts[0], key=f"eopt0_{quiz_id}_{q_idx}")
+                            opt1 = st.text_input(f"الخيار 2:", value=opts[1], key=f"eopt1_{quiz_id}_{q_idx}")
+                        with c_opt2:
+                            opt2 = st.text_input(f"الخيار 3:", value=opts[2], key=f"eopt2_{quiz_id}_{q_idx}")
+                            opt3 = st.text_input(f"الخيار 4:", value=opts[3], key=f"eopt3_{quiz_id}_{q_idx}")
+
+                        c_corr, c_del = st.columns([3, 1])
+                        with c_corr:
+                            curr_corr = int(q.get("correct_index", 0))
+                            edit_corr = st.selectbox(
+                                "الخيار الصحيح:",
+                                [0, 1, 2, 3],
+                                index=curr_corr if curr_corr in [0, 1, 2, 3] else 0,
+                                format_func=lambda x: f"الخيار رقم {x + 1}",
+                                key=f"ecorr_{quiz_id}_{q_idx}"
+                            )
+                        with c_del:
+                            st.write("")
+                            st.write("")
+                            if st.button("🗑️ حذف هذا السؤال", key=f"del_single_q_{quiz_id}_{q_idx}"):
+                                current_qs.pop(q_idx)
+                                supabase.table("quizzes").update({"questions": current_qs}).eq("id", quiz_id).execute()
+                                st.success("تم حذف السؤال بنجاح!")
+                                st.rerun()
+
+                        edit_exp = st.text_area("تفسير الإجابة الصحيحة:", value=q.get("explanation", ""), key=f"eexp_{quiz_id}_{q_idx}")
+
+                        updated_qs.append({
+                            "id": q_idx + 1,
+                            "question": edit_q_text,
+                            "options": [opt0, opt1, opt2, opt3],
+                            "correct_index": edit_corr,
+                            "explanation": edit_exp
+                        })
+
+                if st.button("💾 حفظ كافة التعديلات على الأسئلة", type="primary"):
+                    supabase.table("quizzes").update({"questions": updated_qs}).eq("id", quiz_id).execute()
+                    st.success("🎉 تم حفظ جميع التعديلات بنجاح!")
+                    st.rerun()
+
+                st.divider()
+
+                # قسم إضافة سؤال جديد يدوياً
+                st.markdown("### ➕ إضافة سؤال يدوي جديد إلى هذا الاختبار:")
+                with st.form(f"manual_add_q_form_{quiz_id}"):
+                    new_q_text = st.text_input("نص السؤال الجديد:")
+                    n_col1, n_col2 = st.columns(2)
+                    with n_col1:
+                        new_o1 = st.text_input("الخيار 1:")
+                        new_o2 = st.text_input("الخيار 2:")
+                    with n_col2:
+                        new_o3 = st.text_input("الخيار 3:")
+                        new_o4 = st.text_input("الخيار 4:")
+
+                    new_corr_idx = st.selectbox("رقم الخيار الصحيح:", [0, 1, 2, 3], format_func=lambda x: f"الخيار رقم {x + 1}")
+                    new_explanation = st.text_area("تفسير الإجابة الصحيحة:")
+
+                    add_submit = st.form_submit_button("➕ حفظ وإضافة السؤال إلى الاختبار", type="primary")
+
+                    if add_submit:
+                        if not new_q_text.strip() or not new_o1.strip() or not new_o2.strip():
+                            st.error("يرجى كتابة نص السؤال مع خيارين على الأقل.")
+                        else:
+                            new_q_obj = {
+                                "id": len(current_qs) + 1,
+                                "question": new_q_text.strip(),
+                                "options": [new_o1.strip(), new_o2.strip(), new_o3.strip(), new_o4.strip()],
+                                "correct_index": new_corr_idx,
+                                "explanation": new_explanation.strip()
+                            }
+                            current_qs.append(new_q_obj)
+                            supabase.table("quizzes").update({"questions": current_qs}).eq("id", quiz_id).execute()
+                            st.success("🎉 تمت إضافة السؤال الجديد بنجاح!")
+                            st.rerun()
+            else:
+                st.info("لا توجد اختبارات منشأة لهذه المادة حتى الآن. أنشئ اختباراً أولاً لتتمكن من تحريره.")
+
+        # --- التبويب 3: بنك الاختبارات المتاحة ---
         with tab2:
             st.subheader(f"📚 سجل اختبارات مادة ({subject})")
             q_res = supabase.table("quizzes").select("*").eq("subject", subject).order("created_at", desc=True).execute()
@@ -325,12 +430,13 @@ if role == "👨‍🏫 بوابة المعلم":
                                 st.write(f"- {correct_mark}{opt}")
                             st.caption(f"التفسير التربوي: {q.get('explanation')}")
 
-                        if st.button("🗑️ حذف هذا الاختبار", key=f"del_{qz['id']}"):
+                        if st.button("🗑️ حذف هذا الاختبار بالكامل", key=f"del_all_{qz['id']}"):
                             supabase.table("quizzes").delete().eq("id", qz['id']).execute()
                             st.rerun()
             else:
                 st.info("لا توجد اختبارات منشورة حتى الآن.")
 
+        # --- التبويب 4: النتائج والتحليلات ---
         with tab3:
             st.subheader(f"📊 نتائج وتقارير مادة ({subject})")
             sub_res = supabase.table("submissions").select("*").eq("subject", subject).order("created_at", desc=True).execute()
@@ -502,7 +608,7 @@ elif role == "👨‍🎓 بوابة الطالب":
 
                         st.caption(f"💡 التفسير: {item['explanation']}")
 
-                        # المعلم الذكي السريع عبر Groq
+                        # المعلم الذكي الموحد عبر OpenRouter
                         if not item["is_correct"]:
                             tutor_key = f"tutor_ans_{target_quiz['id']}_{idx}"
                             if st.button(f"🤖 اطلب من المعلم الذكي شرح هذا السؤال", key=f"tutor_btn_{target_quiz['id']}_{idx}"):
