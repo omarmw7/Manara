@@ -36,7 +36,7 @@ else:
 # تأكد أن الاسم هنا هو openrouter_client:
 openrouter_client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
-    api_key=OPENROUTER_API_KEY,
+    api_key=MY_API_KEY,
 )
 
 # --- إعداد الصفحة والواجهة RTL ---
