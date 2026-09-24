@@ -124,6 +124,9 @@ def clean_and_parse_json(text):
 # ========================================================
 # 🚀 دالة توليد الاختبار (عربية فصحى مع الرموز العلمية فقط)
 # ========================================================
+# ========================================================
+# 🚀 دالة توليد الاختبار (مع نظام التبديل الذكي التلقائي)
+# ========================================================
 def generate_quiz_from_pdf(pdf_bytes, subject, title, num_q, diff, allow_tf, make_summary):
     images_content, total_pages = convert_pdf_to_real_images(pdf_bytes, max_pages=6)
     if not images_content:
@@ -162,19 +165,35 @@ def generate_quiz_from_pdf(pdf_bytes, subject, title, num_q, diff, allow_tf, mak
 
     user_payload = [{"type": "text", "text": prompt_text}] + images_content
 
-    response = openrouter_client.chat.completions.create(
-        model="google/gemma-4-31b-it:free",  # الموديل المعتمد والمتاح حالياً
-        messages=[
-            {"role": "user", "content": user_payload}
-        ],
-        temperature=0.2,
-    )
+    # قائمة النماذج المجانية للتبديل التلقائي الفوري في حال انشغال أي سيرفر
+    candidate_models = [
+        "openrouter/free",
+        "meta-llama/llama-3.2-11b-vision-instruct:free",
+        "google/gemma-4-26b-a4b-it:free"
+    ]
 
-    if not response.choices or not response.choices[0].message.content:
-        raise ValueError("لم يرجع السيرفر إجابة، يرجى المحاولة مرة أخرى.")
+    last_error = None
+    for model_name in candidate_models:
+        try:
+            response = openrouter_client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {"role": "user", "content": user_payload}
+                ],
+                temperature=0.2,
+            )
 
-    raw_text = response.choices[0].message.content
-    return clean_and_parse_json(raw_text)
+            if response.choices and response.choices[0].message.content:
+                raw_text = response.choices[0].message.content
+                return clean_and_parse_json(raw_text)
+        except Exception as e:
+            last_error = e
+            # إذا واجه ضغط 429 أو موديل غير متاح 404، ينتقل للموديل التالي فوراً
+            if "429" in str(e) or "404" in str(e) or "rate-limited" in str(e):
+                continue
+            raise e
+
+    raise last_error
 
 # ========================================================
 # ⚡ دوال التحليلات والمعلم الذكي
