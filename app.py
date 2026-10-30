@@ -9,14 +9,10 @@ import string
 import pandas as pd
 import re
 
-# ========================================================
-# 🔑 إعدادات الربط والمفاتيح المعتمدة
-# ========================================================
 OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY")
 SUPABASE_URL = st.secrets.get("SUPABASE_URL")
 SUPABASE_KEY = st.secrets.get("SUPABASE_KEY")
 
-# تهيئة العملاء
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 openrouter_client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
@@ -24,7 +20,6 @@ openrouter_client = OpenAI(
     timeout=120.0
 )
 
-# --- ضبط الصفحة وتنسيق الثيم الداكن والفخم ---
 st.set_page_config(
     page_title="منصة منارة التعليمية الذكية",
     page_icon="🎓",
@@ -127,13 +122,13 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# بيانات المعلمين
+
 TEACHERS_DB = {
-    "أ. عمر": {"password": "bio123", "subject": "الأحياء"},
-    "أ. سيد": {"password": "math123", "subject": "الرياضيات"},
-    "أ. رجب": {"password": "islamic123", "subject": "التربية الإسلامية"},
-    "أ. محمد": {"password": "chm123", "subject": "الكيمياء"},
-    "أ.أحمد": {"password": "Eng123", "subject": "English Language"}
+    "أ. عمر": {"subject": "الأحياء"},
+    "أ. سيد": {"subject": "الرياضيات"},
+    "أ. رجب": {"subject": "التربية الإسلامية"},
+    "أ. محمد": {"subject": "الكيمياء"},
+    "أ.أحمد": {"subject": "English Language"}
 }
 
 
@@ -142,9 +137,6 @@ def generate_quiz_code(subject):
     prefix = subject[:3].strip()
     return f"{prefix}-{code_chars}"
 
-# ========================================================
-# 👁️ تحويل صفحات الـ PDF إلى صور عالية الدقة لكامل الدرس
-# ========================================================
 def convert_pdf_to_real_images(pdf_bytes, max_pages=6):
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     images_payload = []
@@ -164,9 +156,7 @@ def convert_pdf_to_real_images(pdf_bytes, max_pages=6):
         
     return images_payload, total_pages
 
-# ========================================================
-# 🧹 تنظيف واستخراج كائن الـ JSON بأمان تام
-# ========================================================
+
 def clean_and_parse_json(text):
     if not text:
         raise ValueError("وصل رد فارغ من الموديل.")
@@ -191,9 +181,7 @@ def clean_and_parse_json(text):
                 pass
         raise ValueError(f"تعذر استخراج كائن JSON صالح من الرد: {clean_text[:120]}")
 
-# ========================================================
-# 🚀 دالة توليد الاختبار (عربية فصحى مع نظام التبديل الذكي)
-# ========================================================
+
 def generate_quiz_from_pdf(pdf_bytes, subject, title, num_q, diff, allow_tf, make_summary):
     images_content, total_pages = convert_pdf_to_real_images(pdf_bytes, max_pages=6)
     if not images_content:
@@ -263,9 +251,6 @@ def generate_quiz_from_pdf(pdf_bytes, subject, title, num_q, diff, allow_tf, mak
 
     raise last_error
 
-# ========================================================
-# ⚡ دوال التحليلات والمعلم الذكي (OpenRouter الموحد)
-# ========================================================
 def analyze_class_submissions(subject, submissions_data):
     prompt = f"""
 أنت مستشار تربوي. إليك بيانات أداء الطلاب في اختبارات مادة ({subject}):
@@ -295,15 +280,11 @@ def ask_ai_tutor(question, student_ans, correct_ans, explanation):
     )
     return completion.choices[0].message.content
 
-# =======================================================
-# الواجهة الرئيسية
-# =======================================================
+
 st.title("🎓 نظام منارة الذكي للاختبارات والتقييم")
 role = st.sidebar.radio("اختر البوابة:", ["👨‍🏫 بوابة المعلم", "👨‍🎓 بوابة الطالب"])
 
-# =======================================================
-# 1. بوابة المعلم
-# =======================================================
+
 if role == "👨‍🏫 بوابة المعلم":
     if 'logged_teacher' not in st.session_state:
         st.session_state['logged_teacher'] = None
@@ -328,15 +309,13 @@ if role == "👨‍🏫 بوابة المعلم":
             st.session_state['logged_teacher'] = None
             st.rerun()
 
-        # أربعة تبويبات متكاملة للمعلم
-        tab1, tab_edit, tab2, tab3 = st.tabs([
+              tab1, tab_edit, tab2, tab3 = st.tabs([
             "✨ إنشاء اختبار ذكي من الـ PDF",
             "✏️ تحرير وإضافة أسئلة يدوياً",
             "📚 بنك الاختبارات المتاحة", 
             "📊 تحليلات وتقارير الأداء"
         ])
 
-        # --- التبويب 1: إنشاء اختبار بالذكاء الاصطناعي ---
         with tab1:
             st.subheader("🤖 توليد اختبار دقيق بقراءة بصرية لكامل صفحات الدرس")
             c_title, c_num, c_diff = st.columns([2, 1, 1])
@@ -388,7 +367,7 @@ if role == "👨‍🏫 بوابة المعلم":
                     except Exception as e:
                         st.error(f"حدث خطأ أثناء المعالجة: {e}")
 
-        # --- التبويب 2: تحرير وتعديل وإضافة أسئلة يدوياً ---
+  
         with tab_edit:
             st.subheader(f"✏️ تحرير وإضافة أسئلة لاختبارات مادة ({subject})")
             quizzes_list_res = supabase.table("quizzes").select("id, lesson_title, quiz_code, questions").eq("subject", subject).order("created_at", desc=True).execute()
@@ -456,7 +435,7 @@ if role == "👨‍🏫 بوابة المعلم":
 
                 st.divider()
 
-                # قسم إضافة سؤال جديد يدوياً
+              
                 st.markdown("### ➕ إضافة سؤال يدوي جديد إلى هذا الاختبار:")
                 with st.form(f"manual_add_q_form_{quiz_id}"):
                     new_q_text = st.text_input("نص السؤال الجديد:")
@@ -491,7 +470,7 @@ if role == "👨‍🏫 بوابة المعلم":
             else:
                 st.info("لا توجد اختبارات منشأة لهذه المادة حتى الآن. أنشئ اختباراً أولاً لتتمكن من تحريره.")
 
-        # --- التبويب 3: بنك الاختبارات المتاحة ---
+
         with tab2:
             st.subheader(f"📚 سجل اختبارات مادة ({subject})")
             q_res = supabase.table("quizzes").select("*").eq("subject", subject).order("created_at", desc=True).execute()
@@ -518,7 +497,6 @@ if role == "👨‍🏫 بوابة المعلم":
             else:
                 st.info("لا توجد اختبارات منشورة حتى الآن.")
 
-        # --- التبويب 4: النتائج والتحليلات ---
         with tab3:
             st.subheader(f"📊 نتائج وتقارير مادة ({subject})")
             sub_res = supabase.table("submissions").select("*").eq("subject", subject).order("created_at", desc=True).execute()
@@ -548,9 +526,6 @@ if role == "👨‍🏫 بوابة المعلم":
             else:
                 st.info("لا توجد أي تسليمات مسجلة من الطلاب حتى الآن.")
 
-# =======================================================
-# 2. بوابة الطالب
-# =======================================================
 elif role == "👨‍🎓 بوابة الطالب":
     st.header("بوابة الاختبارات التفاعلية للطلاب")
 
@@ -617,7 +592,7 @@ elif role == "👨‍🎓 بوابة الطالب":
                 with st.form("exam_form"):
                     total_qs = len(active_quiz)
                     for idx, q in enumerate(active_quiz):
-                        # عرض السؤال داخل بطاقة تفاعلية عصرية
+    
                         st.markdown(f"""
                         <div class="quiz-card">
                             <span class="q-badge">السؤال {idx + 1} من {total_qs}</span>
@@ -664,7 +639,7 @@ elif role == "👨‍🎓 بوابة الطالب":
                                 "explanation": q["explanation"]
                             })
 
-                        # الحفظ في Supabase
+
                         supabase.table("submissions").insert({
                             "quiz_id": target_quiz["id"],
                             "subject": target_quiz["subject"],
@@ -689,11 +664,11 @@ elif role == "👨‍🎓 بوابة الطالب":
                 total = res_data['total']
                 pct = (score / total) * 100
 
-                # تحديد الوسام واللون
+             
                 badge_title = "🏆 عبقري ومتميز!" if pct >= 85 else ("🌟 بطل، نتيجة رائعة!" if pct >= 65 else "💪 بداية موفقة، راجع أخطاءك لتتفوق!")
                 badge_color = "#10B981" if pct >= 65 else "#F59E0B"
 
-                # كرت دارك فخم ومتناسق مع الوضع الليلي بنصوص واضحة ومقروءة
+               
                 st.markdown(f"""
                 <div style="background: #1E293B; border-radius: 20px; padding: 30px; text-align: center; border: 1.5px solid #334155; box-shadow: 0 10px 30px rgba(0,0,0,0.5); margin-bottom: 25px;">
                     <div style="font-size: 3rem; margin-bottom: 8px;">{badge_title.split()[0]}</div>
@@ -727,7 +702,7 @@ elif role == "👨‍🎓 بوابة الطالب":
                         </div>
                         """, unsafe_allow_html=True)
 
-                        # زر المعلم الذكي
+                       
                         tutor_key = f"tutor_ans_{target_quiz['id']}_{idx}"
                         if st.button(f"🤖 اطلب من المعلم الذكي توضيح هذا الخطأ", key=f"tutor_btn_{target_quiz['id']}_{idx}"):
                             with st.spinner("المعلم الذكي يجهز لك الشرح المبسط..."):
