@@ -309,7 +309,7 @@ if role == "👨‍🏫 بوابة المعلم":
             st.session_state['logged_teacher'] = None
             st.rerun()
 
-              tab1, tab_edit, tab2, tab3 = st.tabs([
+            tab1, tab_edit, tab2, tab3 = st.tabs([
             "✨ إنشاء اختبار ذكي من الـ PDF",
             "✏️ تحرير وإضافة أسئلة يدوياً",
             "📚 بنك الاختبارات المتاحة", 
