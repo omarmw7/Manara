@@ -290,26 +290,22 @@ if role == "👨‍🏫 بوابة المعلم":
         st.session_state['logged_teacher'] = None
 
     if not st.session_state['logged_teacher']:
-        st.subheader("🔒 تسجيل الدخول لأساتذة المواد")
-        t_user = st.selectbox("اسم المعلم:", list(TEACHERS_DB.keys()))
-        t_pwd = st.text_input("كلمة المرور:", type="password")
+        st.subheader("🔒 اختيار المعلم والمادة")
+        t_user = st.selectbox("اختر اسم المعلم:", list(TEACHERS_DB.keys()))
 
-        if st.button("تسجيل الدخول", type="primary"):
-            if t_pwd == TEACHERS_DB[t_user]["password"]:
-                st.session_state['logged_teacher'] = t_user
-                st.rerun()
-            else:
-                st.error("كلمة المرور غير صحيحة.")
+        if st.button("الدخول للبوابة", type="primary"):
+            st.session_state['logged_teacher'] = t_user
+            st.rerun()
     else:
         teacher = st.session_state['logged_teacher']
         subject = TEACHERS_DB[teacher]["subject"]
 
         st.sidebar.success(f"👨‍🏫 **المعلم:** {teacher}\n\n📚 **المادة:** {subject}")
-        if st.sidebar.button("🚪 تسجيل الخروج"):
+        if st.sidebar.button("🚪 تغيير المعلم"):
             st.session_state['logged_teacher'] = None
             st.rerun()
 
-            tab1, tab_edit, tab2, tab3 = st.tabs([
+        tab1, tab_edit, tab2, tab3 = st.tabs([
             "✨ إنشاء اختبار ذكي من الـ PDF",
             "✏️ تحرير وإضافة أسئلة يدوياً",
             "📚 بنك الاختبارات المتاحة", 
@@ -664,7 +660,7 @@ elif role == "👨‍🎓 بوابة الطالب":
                 total = res_data['total']
                 pct = (score / total) * 100
 
-             
+               
                 badge_title = "🏆 عبقري ومتميز!" if pct >= 85 else ("🌟 بطل، نتيجة رائعة!" if pct >= 65 else "💪 بداية موفقة، راجع أخطاءك لتتفوق!")
                 badge_color = "#10B981" if pct >= 65 else "#F59E0B"
 
@@ -703,15 +699,15 @@ elif role == "👨‍🎓 بوابة الطالب":
                         """, unsafe_allow_html=True)
 
                        
-                        tutor_key = f"tutor_ans_{target_quiz['id']}_{idx}"
-                        if st.button(f"🤖 اطلب من المعلم الذكي توضيح هذا الخطأ", key=f"tutor_btn_{target_quiz['id']}_{idx}"):
-                            with st.spinner("المعلم الذكي يجهز لك الشرح المبسط..."):
-                                explanation_text = ask_ai_tutor(
-                                    item["question"], item["chosen"], item["correct"], item["explanation"]
-                                )
-                                st.session_state[tutor_key] = explanation_text
+                    tutor_key = f"tutor_ans_{target_quiz['id']}_{idx}"
+                    if st.button(f"🤖 اطلب من المعلم الذكي توضيح هذا الخطأ", key=f"tutor_btn_{target_quiz['id']}_{idx}"):
+                        with st.spinner("المعلم الذكي يجهز لك الشرح المبسط..."):
+                            explanation_text = ask_ai_tutor(
+                                item["question"], item["chosen"], item["correct"], item["explanation"]
+                            )
+                            st.session_state[tutor_key] = explanation_text
 
-                        if tutor_key in st.session_state:
-                            st.info(f"👨‍🏫 **المعلم الذكي:**\n\n{st.session_state[tutor_key]}")
+                    if tutor_key in st.session_state:
+                        st.info(f"👨‍🏫 **المعلم الذكي:**\n\n{st.session_state[tutor_key]}")
 
                     st.write("")
