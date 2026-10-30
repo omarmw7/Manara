@@ -12,7 +12,7 @@ import re
 # ========================================================
 # 🔑 إعدادات الربط والمفاتيح المعتمدة
 # ========================================================
-OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", "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")
+OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY")
 SUPABASE_URL = st.secrets.get("SUPABASE_URL")
 SUPABASE_KEY = st.secrets.get("SUPABASE_KEY")
 
